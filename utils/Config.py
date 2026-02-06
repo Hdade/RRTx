@@ -5,9 +5,10 @@ FPS = 120
 
 # RRTX Hyperparameters
 MAX_ITER = 10000 
-DELTA = 200.0
-EPSILON = 50.0
+DELTA = 20.0
+EPSILON = 5.0
 GAMMA = 1000.0
+GOAL_RADIUS = 20.0
 
 # Map Dimensions
 X_DIM = SCREEN_WIDTH

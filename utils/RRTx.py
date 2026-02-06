@@ -43,7 +43,7 @@ class RRTx:
         zeta_D = self.unitBallVolume(DIMENSION)
         term1 = (GAMMA / zeta_D) * (math.log(card_V) / card_V)
         r = math.pow(term1, 1.0 / DIMENSION)
-        return min(r, DELTA)
+        return max(r, DELTA * 1.5)
     
     def verifyOrphan(self, v):
         """Algorithm 10"""
@@ -149,9 +149,18 @@ class RRTx:
             u.children.append(v)
 
     def updateRobot(self):
-        if self.v_bot == self.v_goal or self.v_bot.parent is None:
+        if self.v_bot == self.v_goal:
             return self.v_bot
         
+        dist_to_goal = self.d(self.v_bot, self.v_goal)
+        if dist_to_goal <= GOAL_RADIUS:
+            if not self.isCollision(self.v_bot, self.v_goal):
+                print(">>> SNAP! Nhảy cóc về đích thành công!")
+                return self.v_goal
+            
+        if self.v_bot.parent is None:
+            return self.v_bot
+            
         return self.v_bot.parent
 
     def randomNode(self):
@@ -260,6 +269,9 @@ class RRTx:
             N_v_in = v.N0_in + v.Nr_in
             for u in N_v_in:
                 if u == v.parent:
+                    continue
+
+                if self.isCollision(u, v): 
                     continue
 
                 if u.lmc > self.d(u, v) + v.lmc:
@@ -379,4 +391,8 @@ class RRTx:
             self.rewireNeighbors(v, r)
             self.reduceInconsistency(r)
         
+        potential_parents = self.near(self.v_bot, r)
+        if potential_parents:
+            self.findParent(self.v_bot, potential_parents, r)
+
         return False
