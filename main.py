@@ -27,6 +27,9 @@ class Visualizer:
         self.font = pygame.font.SysFont("Consolas", 14)
 
         self.init_simulation()
+
+        self.last_move_time = 0
+        self.move_delay = 200
         
         self.show_tree = True
         self.paused = False
@@ -149,13 +152,16 @@ class Visualizer:
                     self.rrtx.updateObstacles(r, self.obstacles)
 
             if not self.paused:
-                for _ in range(1):
-                    self.rrtx.step()
-
                 current_time = pygame.time.get_ticks()
+                should_move = False
+                if current_time - self.last_move_time > self.move_delay:
+                    should_move = True
+                    self.last_move_time = current_time
+                
+                self.rrtx.step(move_robot=should_move)
                 if not self.dynamic_triggered and (current_time - self.start_time > 3000):
-                    if self.rrtx.v_bot.lmc < float('inf'):
-                         self.trigger_dynamic_event()
+                     if self.rrtx.v_bot.lmc < float('inf'):
+                          self.trigger_dynamic_event()
 
             self.screen.fill(COLOR_BG)
             
@@ -168,10 +174,9 @@ class Visualizer:
             pygame.draw.circle(self.screen, COLOR_GOAL, (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 8)
             
             bot_pos = (int(self.rrtx.v_bot.pos[0]), int(self.rrtx.v_bot.pos[1]))
-            pygame.draw.circle(self.screen, COLOR_ROBOT, bot_pos, 6)
+            pygame.draw.circle(self.screen, COLOR_ROBOT, bot_pos, 8)
             r_search = self.rrtx.shrinkingBallRadius()
-            pygame.draw.circle(self.screen, (255, 255, 0), (int(self.start_node.pos[0]), int(self.start_node.pos[1])), int(GOAL_RADIUS), 1)
-
+            pygame.draw.circle(self.screen, (100, 100, 100), bot_pos, int(r_search), 1)            
             self.draw_ui()
             
             pygame.display.flip()

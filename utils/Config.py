@@ -1,7 +1,7 @@
 # Simulation Settings
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
-FPS = 120
+FPS = 30
 
 # RRTX Hyperparameters
 MAX_ITER = 10000 

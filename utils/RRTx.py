@@ -346,7 +346,7 @@ class RRTx:
             if self.obstacleHasChanged():
                 self.updateObstacles(r, currentVisibleObstacle)
 
-            if self.v_bot.g < float('inf') and self.v_bot != self.v_goal:
+            if self.v_bot.lmc < float('inf') and self.v_bot != self.v_goal:
                 self.v_bot = self.updateRobot()
 
             v = self.randomNode()
@@ -362,7 +362,7 @@ class RRTx:
                 self.rewireNeighbors(v, r)
                 self.reduceInconsistency(r)
     
-    def step(self):
+    def step(self, move_robot=True):
         if self.v_bot == self.v_goal:
             return True
         
@@ -372,7 +372,7 @@ class RRTx:
         if self.obstacleHasChanged():
             self.updateObstacles(r, currentVisibleObstacle)
         
-        if self.v_bot.g < float('inf') and self.v_bot != self.v_goal:
+        if move_robot and self.v_bot.lmc < float('inf') and self.v_bot != self.v_goal:
             self.v_bot = self.updateRobot()
         
         v = self.randomNode()
@@ -391,7 +391,10 @@ class RRTx:
             self.rewireNeighbors(v, r)
             self.reduceInconsistency(r)
         
+        self.v_bot.parent = None
+        self.v_bot.lmc = float('inf') 
         potential_parents = self.near(self.v_bot, r)
+        
         if potential_parents:
             self.findParent(self.v_bot, potential_parents, r)
 
