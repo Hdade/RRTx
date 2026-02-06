@@ -1,13 +1,21 @@
-import math
-import random
-import matplotlib.pyplot as plt
-import numpy as np
+# utils/Config.py
 
-# --- Configuration ---
-WIDTH, HEIGHT = 50, 50
-MAX_ITER = 300       # Initial build iterations
-REPAIR_ITER = 200     # Repair iterations when path is broken
-NORMAL_ITER = 5      # Normal iterations when path is valid
-REWIRE_RADIUS = 8.0  # Radius for checking neighbors
-STEP_LEN = 2.0       # Growth step size
-ROBOT_SPEED = 1.0    # How fast robot moves per frame
+# Simulation Settings
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+FPS = 60
+
+# RRTX Hyperparameters
+MAX_ITER = 10000 
+DELTA = 20.0            # Tăng bước nhảy một chút để vươn xa nhanh hơn
+EPSILON = 5.0           # Tăng lên 5.0. Đừng quá cầu toàn với sai số < 5px.
+GAMMA = 3000.0          # Giảm xuống. GAMMA quá lớn làm bán kính tìm kiếm r to, gây chậm.
+                        # Công thức tham khảo: gamma approx 50 * (free_space)^(1/d)
+
+# Map Dimensions
+X_DIM = SCREEN_WIDTH
+Y_DIM = SCREEN_HEIGHT
+DIMENSION = 2
+
+# Spatial Grid Settings (Mới)
+GRID_SIZE = 40.0        # Kích thước mỗi ô lưới, nên >= DELTA
