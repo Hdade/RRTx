@@ -1,8 +1,8 @@
 import heapq, math, random
 from utils.node import *
 from utils.model import *
-from utils.Config import *
-from utils.SpatialGrid import SpatialGrid
+from utils.config import *
+from utils.spatialGrid import SpatialGrid
 
 class RRTx:
     def __init__(self, start: Node, goal: Node, model):
@@ -155,9 +155,6 @@ class RRTx:
         return self.v_bot.parent
 
     def randomNode(self):
-        # if random.random() <= 0.95:
-        #     return self.v_start
-
         rx = np.random.uniform(0, X_DIM)
         ry = np.random.uniform(0, Y_DIM)
         return Node(rx, ry)
@@ -166,10 +163,16 @@ class RRTx:
         if not self.V:
             return None
         
+        search_radius = DELTA * 2.0 
+        candidates = self.spatial_grid.getNeighbors(v.pos, search_radius)
+
+        if not candidates:
+            candidates = self.V
+
         nearest_v = None
         minDist = float('inf')
 
-        for u in self.V:
+        for u in candidates:
             dist = self.d(u, v)
             if dist < minDist:
                 minDist = dist
@@ -179,7 +182,8 @@ class RRTx:
 
     def near(self, v, r):
         V_near = []
-        for u in self.V:
+        candidates = self.spatial_grid.getNeighbors(v.pos, r)
+        for u in candidates:
             if self.d(u, v) <= r:
                 V_near.append(u)
 
@@ -222,6 +226,7 @@ class RRTx:
             return
         
         self.V.append(v)
+        self.spatial_grid.add(v)
         for u in V_near:
             if not self.isCollision(v, u):
                 v.N0_out.append(u)
@@ -268,16 +273,21 @@ class RRTx:
         r = self.shrinkingBallRadius()
         self.cullNeighbors(v, r)
 
+        v.lmc = float('inf') 
+        best_parent = None
         potential_parents = v.N0_out + v.Nr_out
         for u in potential_parents:
             if u in self.Orphans or u.parent == v or self.isCollision(v, u):
                 continue
 
             dist_v_u = self.d(v, u)
-
-            if v.lmc > dist_v_u + u.lmc:
-                v.lmc = dist_v_u + u.lmc
-                self.makeParentOf(v, u)
+            new_cost = dist_v_u + u.lmc
+            if new_cost < v.lmc:
+                v.lmc = new_cost
+                best_parent = u
+                
+        if best_parent is not None:
+            self.makeParentOf(v, best_parent)
 
     def calculateKey(self, v):
         """Key: (min(v.g, v.lmc), v.g)"""

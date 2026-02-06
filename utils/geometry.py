@@ -63,9 +63,7 @@ class Rectangle:
         rot = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
         
         self.vertices = local_v @ rot.T + np.array([self.x, self.y])
-        
         self.bounding_r = np.sqrt(w2**2 + h2**2)
-        
         self._hash = hash((self.x, self.y, self.width, self.height, self.angle, 'rect'))
 
     def __eq__(self, other):

@@ -1,5 +1,5 @@
 import numpy as np
-from utils.Config import *
+from utils.config import *
 
 class HolonomicModel:
     def __init__(self, obstacles):

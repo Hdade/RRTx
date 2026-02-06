@@ -2,14 +2,12 @@ import pygame
 import sys
 import numpy as np
 
-# Import logic
-from utils.Config import *
+from utils.config import *
 from utils.node import Node
 from utils.geometry import Rectangle
 from utils.model import HolonomicModel
 from utils.RRTx import RRTx
 
-# --- COLOR PALETTE ---
 COLOR_BG = (20, 20, 30)           # Dark Navy (Nền tối cho ngầu)
 COLOR_OBSTACLE = (50, 50, 60)     # Xám đậm
 COLOR_OBSTACLE_BORDER = (200, 200, 200)
@@ -179,7 +177,7 @@ class Visualizer:
             if not self.paused:
                 # Chạy 1 bước thuật toán
                 # (Có thể gọi loop step nhiều lần để tăng tốc độ phát triển cây)
-                for _ in range(100): 
+                for _ in range(1000): 
                     self.rrtx.step()
 
                 # Trigger sự kiện động sau 3 giây
