@@ -1,180 +1,221 @@
+import pygame
+import sys
 import numpy as np
-import pygame, sys, random
+
+# Import logic
 from utils.Config import *
 from utils.node import Node
+from utils.geometry import Rectangle
 from utils.model import HolonomicModel
 from utils.RRTx import RRTx
-import utils.Config
 
-utils.Config.SCREEN_WIDTH = 800
-utils.Config.SCREEN_HEIGHT = 600
-utils.Config.X_DIM = 800
-utils.Config.Y_DIM = 600
-utils.Config.GAMMA = 5000.0 
+# --- COLOR PALETTE ---
+COLOR_BG = (20, 20, 30)           # Dark Navy (Nền tối cho ngầu)
+COLOR_OBSTACLE = (50, 50, 60)     # Xám đậm
+COLOR_OBSTACLE_BORDER = (200, 200, 200)
+COLOR_TREE = (0, 100, 255, 50)    # Xanh dương nhạt (alpha thấp)
+COLOR_PATH = (255, 50, 50)        # Đỏ tươi (Path)
+COLOR_ROBOT = (255, 165, 0)       # Cam
+COLOR_GOAL = (0, 255, 127)        # Xanh lá mạ
+COLOR_START = (0, 191, 255)       # Xanh biển
+COLOR_ORPHAN = (148, 0, 211)      # Tím (Node bị cô lập)
 
-COLOR_BG = (50, 50, 50)
-COLOR_OBS_FILL = (0, 0, 0)
-COLOR_OBS_BORDER = (255, 255, 255)
-COLOR_TREE = (100, 100, 100)
-COLOR_PATH = (255, 0, 0)
-COLOR_ROBOT = (0, 255, 255)  
-COLOR_GOAL = (255, 255, 255)
-COLOR_START = (0, 255, 0)
+class Visualizer:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption("RRTX Algorithm - Senior Robotics Demo")
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont("Consolas", 14)
 
-class Obstacle:
-    def __init__(self, x, y, w, h, vx=0.0, vy=0.0):
-        self.rect = pygame.Rect(x, y, w, h)
-        self.x = float(x); self.y = float(y)
-        self.vx = vx; self.vy = vy
-        self.color = COLOR_OBS_FILL
-        self.border_color = COLOR_OBS_BORDER
-        self.visible = True
-
-    def move(self, boundary_w, boundary_h):
-        if self.vx == 0 and self.vy == 0: return False
+        self.init_simulation()
         
-        self.x += self.vx
-        self.y += self.vy
-        
-        if self.x < 0 or self.x + self.rect.w > boundary_w: self.vx *= -1
-        if self.y < 0 or self.y + self.rect.h > boundary_h: self.vy *= -1
-        
-        self.x = max(0, min(self.x, boundary_w - self.rect.w))
-        self.y = max(0, min(self.y, boundary_h - self.rect.h))
-        
-        old_rect = self.rect.copy()
-        self.rect.x = int(self.x)
-        self.rect.y = int(self.y)
-        
-        return old_rect != self.rect
+        # UI Flags
+        self.show_tree = True
+        self.paused = False
+        self.dynamic_triggered = False
 
-    def draw(self, surface):
-        if self.visible:
-            pygame.draw.rect(surface, self.color, self.rect)
-            pygame.draw.rect(surface, self.border_color, self.rect, 2)
+    def init_simulation(self):
+        # 1. Map Setup (Figure 1 Layout)
+        self.start_node = Node(400, 550)
+        self.goal_node = Node(400, 280)
 
-    def intersectSegment(self, p1, p2):
-        if not self.visible: return False
-        start = (p1[0], p1[1])
-        end = (p2[0], p2[1])
-        return bool(self.rect.clipline(start, end))
-
-    def isInside(self, x, y):
-        if not self.visible: return False
-        return self.rect.collidepoint(x, y)
-
-    def __eq__(self, other):
-        return isinstance(other, Obstacle) and self.rect == other.rect
-    
-    def __hash__(self):
-        return hash((self.rect.x, self.rect.y, self.rect.w, self.rect.h, self.visible))
-
-class Environment:
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
         self.obstacles = []
-        self.start = (400, 550)
-        self.goal = (400, 250)
-        self.dynamic_event_timer = 0
-        self._init_dynamic_layout()
+        self.create_map()
 
-    def _init_dynamic_layout(self):
-        self.obstacles.append(Obstacle(200, 150, 50, 300))
-        self.obstacles.append(Obstacle(550, 150, 50, 300))
-        self.obstacles.append(Obstacle(200, 150, 400, 50))
-        self.obstacles.append(Obstacle(200, 400, 150, 50))
-        self.obstacles.append(Obstacle(450, 400, 150, 50))
-        self.obstacles.append(Obstacle(50, 100, 60, 60, vx=2.0, vy=1.5))
-        self.obstacles.append(Obstacle(650, 100, 60, 60, vx=-2.5, vy=1.0))
-        self.obstacles.append(Obstacle(100, 500, 80, 40, vx=3.0, vy=0))
-        self.obstacles.append(Obstacle(620, 500, 80, 40, vx=-3.0, vy=0))
-        self.obstacles.append(Obstacle(380, 460, 40, 40, vx=0, vy=1.0))
-
-    def update(self):
-        for obs in self.obstacles:
-            obs.move(self.width, self.height)
+        # 2. Algorithm Init
+        self.model = HolonomicModel(self.obstacles)
+        self.rrtx = RRTx(self.start_node, self.goal_node, self.model)
         
-        self.dynamic_event_timer += 1
-        if self.dynamic_event_timer > 120:
-            self.dynamic_event_timer = 0
-            if len(self.obstacles) > 5:
-                idx = random.randint(5, len(self.obstacles) - 1)
-                self.obstacles[idx].visible = not self.obstacles[idx].visible
+        # Tracking Stats
+        self.start_time = pygame.time.get_ticks()
 
-    def draw(self, surface):
-        pygame.draw.circle(surface, COLOR_START, self.start, 8)
-        pygame.draw.rect(surface, COLOR_GOAL, (self.goal[0]-10, self.goal[1]-10, 20, 20))
+    def create_map(self):
+        """Tạo map mô phỏng 'Bug Trap'"""
+        # Tường bao
+        self.obstacles.append(Rectangle(100, 300, 40, 580, 0)) # Trái
+        self.obstacles.append(Rectangle(700, 300, 40, 580, 0)) # Phải
+        self.obstacles.append(Rectangle(400, 50, 640, 40, 0))  # Trên
         
-        for obs in self.obstacles:
-            obs.draw(surface)
+        # Đáy (hở giữa)
+        self.obstacles.append(Rectangle(240, 580, 320, 40, 0))
+        self.obstacles.append(Rectangle(560, 580, 320, 40, 0))
 
-def draw_rrt_graph(surface, rrt):
-    if rrt.V:
-        for node in rrt.V:
+        # Hộp chữ U ngược ở giữa (Bẫy)
+        self.obstacles.append(Rectangle(400, 180, 300, 40, 0)) # Nóc hộp
+        self.obstacles.append(Rectangle(270, 280, 40, 240, 0)) # Cạnh trái hộp
+        self.obstacles.append(Rectangle(530, 280, 40, 240, 0)) # Cạnh phải hộp
+
+        # Obstacles nhỏ ngẫu nhiên (Noise)
+        self.obstacles.append(Rectangle(300, 400, 30, 30, 45))
+        self.obstacles.append(Rectangle(500, 400, 30, 30, 15))
+
+    def trigger_dynamic_event(self):
+        """Thả cửa chặn đường robot"""
+        print(">>> WARNING: DYNAMIC OBSTACLE DETECTED! <<<")
+        # Một thanh ngang xuất hiện chặn ngay lối vào của cái hộp
+        new_obs = Rectangle(400, 420, 200, 30, 0)
+        self.obstacles.append(new_obs)
+        
+        # Notify RRTX
+        r = self.rrtx.shrinkingBallRadius()
+        self.rrtx.updateObstacles(r, self.obstacles)
+        self.dynamic_triggered = True
+
+    def draw_obstacles(self):
+        for obs in self.obstacles:
+            # Lấy vertices để vẽ đa giác (hỗ trợ xoay)
+            vertices = obs.get_vertices()
+            pygame.draw.polygon(self.screen, COLOR_OBSTACLE, vertices)
+            pygame.draw.lines(self.screen, COLOR_OBSTACLE_BORDER, True, vertices, 2)
+
+    def draw_tree(self):
+        """
+        Vẽ cây RRTX. 
+        Lưu ý: Để tối ưu, ta vẽ lên một Surface trong suốt thay vì vẽ trực tiếp.
+        """
+        if not self.show_tree:
+            return
+
+        # Chỉ vẽ 2000 node gần nhất nếu quá đông để giữ FPS
+        nodes_to_draw = self.rrtx.V
+        
+        for node in nodes_to_draw:
             if node.parent:
+                # Vẽ line từ node -> parent
                 start_pos = (int(node.pos[0]), int(node.pos[1]))
                 end_pos = (int(node.parent.pos[0]), int(node.parent.pos[1]))
-                pygame.draw.line(surface, COLOR_TREE, start_pos, end_pos, 5)
+                pygame.draw.line(self.screen, (50, 100, 100), start_pos, end_pos, 1)
 
-    curr = rrt.v_bot
-    path_points = []
-    while curr is not None:
-        path_points.append((int(curr.pos[0]), int(curr.pos[1])))
-        if curr == rrt.v_goal:
-            break
-        curr = curr.parent
-    
-    if len(path_points) > 1:
-        pygame.draw.lines(surface, COLOR_PATH, False, path_points, 3)
-
-    robot_pos = (int(rrt.v_bot.pos[0]), int(rrt.v_bot.pos[1]))
-    pygame.draw.circle(surface, COLOR_ROBOT, robot_pos, 8)
-
-def main():
-    pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("RRTX Dynamic Replanning Demo")
-    clock = pygame.time.Clock()
-
-    env = Environment(SCREEN_WIDTH, SCREEN_HEIGHT)
-    start_node = Node(env.start[0], env.start[1])
-    goal_node = Node(env.goal[0], env.goal[1])
-
-    model = HolonomicModel(env.obstacles)
-    rrt = RRTx(start_node, goal_node, model)
-
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_r:
-                    main()
-                    return
-
-        env.update()
-
-        steps_per_frame = 30
-        for _ in range(steps_per_frame):
-            rrt.step()
-
-        screen.fill(COLOR_BG)
+    def draw_orphans(self):
+        """Vẽ các node bị cô lập (Orphans) - Đặc trưng của RRTX"""
+        if not self.rrtx.Orphans:
+            return
         
-        draw_rrt_graph(screen, rrt)
-        env.draw(screen)
+        for node in self.rrtx.Orphans:
+            pos = (int(node.pos[0]), int(node.pos[1]))
+            pygame.draw.circle(self.screen, COLOR_ORPHAN, pos, 2)
+
+    def draw_path(self):
+        """Truy vết từ Robot về Goal (theo parent pointers)"""
+        path = []
+        curr = self.rrtx.v_bot
         
-        font = pygame.font.SysFont("Arial", 18)
-        info = f"Nodes: {len(rrt.V)} | Robot Cost: {rrt.v_bot.g:.1f}"
-        text_surf = font.render(info, True, (255, 255, 0))
-        screen.blit(text_surf, (10, 10))
+        # Safety limit để tránh vòng lặp vô tận nếu bug
+        limit = 0
+        while curr is not None and limit < 5000:
+            path.append(curr.pos)
+            if curr == self.rrtx.v_goal:
+                break
+            curr = curr.parent
+            limit += 1
+            
+        if len(path) > 1:
+            pygame.draw.lines(self.screen, COLOR_PATH, False, path, 4)
 
-        pygame.display.flip()
-        clock.tick(FPS)
+    def draw_ui(self):
+        # Thông tin FPS và Status
+        fps = int(self.clock.get_fps())
+        nodes_count = len(self.rrtx.V)
+        orphan_count = len(self.rrtx.Orphans)
+        cost = self.rrtx.v_bot.lmc if self.rrtx.v_bot.lmc != float('inf') else "Inf"
+        
+        texts = [
+            f"FPS: {fps} | Nodes: {nodes_count} | Orphans: {orphan_count}",
+            f"Robot Cost (LMC): {cost}",
+            f"Controls: [Space] Pause | [T] Toggle Tree | [Click] Add Obstacle",
+        ]
+        
+        if self.dynamic_triggered:
+            texts.append("STATUS: OBSTACLE UPDATE DETECTED! REWIRING...")
 
-    pygame.quit()
-    sys.exit()
+        for i, line in enumerate(texts):
+            s = self.font.render(line, True, (200, 200, 200))
+            self.screen.blit(s, (10, 10 + i * 20))
+
+    def run(self):
+        running = True
+        
+        while running:
+            # 1. Event Handling
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_t:
+                        self.show_tree = not self.show_tree
+                    elif event.key == pygame.K_SPACE:
+                        self.paused = not self.paused
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    # Thêm vật cản bằng chuột
+                    mx, my = pygame.mouse.get_pos()
+                    new_obs = Rectangle(mx, my, 50, 50, 0)
+                    self.obstacles.append(new_obs)
+                    # Notify RRTX update ngay lập tức
+                    r = self.rrtx.shrinkingBallRadius()
+                    self.rrtx.updateObstacles(r, self.obstacles)
+
+            # 2. Logic Update
+            if not self.paused:
+                # Chạy 1 bước thuật toán
+                # (Có thể gọi loop step nhiều lần để tăng tốc độ phát triển cây)
+                for _ in range(100): 
+                    self.rrtx.step()
+
+                # Trigger sự kiện động sau 3 giây
+                current_time = pygame.time.get_ticks()
+                if not self.dynamic_triggered and (current_time - self.start_time > 3000):
+                    # Chỉ trigger khi robot đã đi được một chút (ví dụ cost < vô cực)
+                    if self.rrtx.v_bot.lmc < float('inf'):
+                         self.trigger_dynamic_event()
+
+            # 3. Visualization Loop
+            self.screen.fill(COLOR_BG)
+            
+            self.draw_obstacles()
+            self.draw_tree()      # Vẽ cây (nền)
+            self.draw_orphans()   # Vẽ các node bị gãy (nếu có)
+            self.draw_path()      # Vẽ đường đi (nổi bật)
+            
+            # Vẽ Start / Goal
+            pygame.draw.circle(self.screen, COLOR_START, (int(self.start_node.pos[0]), int(self.start_node.pos[1])), 8)
+            pygame.draw.circle(self.screen, COLOR_GOAL, (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 8)
+            
+            # Vẽ Robot
+            bot_pos = (int(self.rrtx.v_bot.pos[0]), int(self.rrtx.v_bot.pos[1]))
+            pygame.draw.circle(self.screen, COLOR_ROBOT, bot_pos, 6)
+            # Vẽ vòng tròn bán kính tìm kiếm quanh robot
+            r_search = self.rrtx.shrinkingBallRadius()
+            pygame.draw.circle(self.screen, (100, 100, 100), bot_pos, int(r_search), 1)
+
+            self.draw_ui()
+            
+            pygame.display.flip()
+            self.clock.tick(60)
+
+        pygame.quit()
+        sys.exit()
 
 if __name__ == "__main__":
-    main()
+    viz = Visualizer()
+    viz.run()
