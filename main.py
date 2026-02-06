@@ -160,8 +160,8 @@ class Visualizer:
                 
                 self.rrtx.step(move_robot=should_move)
                 if not self.dynamic_triggered and (current_time - self.start_time > 3000):
-                     if self.rrtx.v_bot.lmc < float('inf'):
-                          self.trigger_dynamic_event()
+                    if self.rrtx.v_bot.lmc < float('inf'):
+                        self.trigger_dynamic_event()
 
             self.screen.fill(COLOR_BG)
             
@@ -180,7 +180,7 @@ class Visualizer:
             self.draw_ui()
             
             pygame.display.flip()
-            self.clock.tick(60)
+            self.clock.tick(80)
 
         pygame.quit()
         sys.exit()
