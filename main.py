@@ -1,7 +1,5 @@
-import pygame
-import sys
 import numpy as np
-
+import pygame, sys
 from utils.config import *
 from utils.node import Node
 from utils.geometry import Rectangle
@@ -36,8 +34,8 @@ class Visualizer:
         self.dynamic_triggered = False
 
     def init_simulation(self):
-        self.start_node = Node(400, 550)
-        self.goal_node = Node(400, 280)
+        self.goal_node = Node(400, 550 - 400)
+        self.start_node = Node(400, 280)
 
         self.obstacles = []
         self.create_map()
