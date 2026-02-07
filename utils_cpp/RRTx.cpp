@@ -396,7 +396,7 @@ Node* RRTx::updateRobot() {
     double dist_to_goal = d(v_bot, v_goal);
     if(dist_to_goal <= config::GOAL_RADIUS) {
         if(!isCollision(v_bot, v_goal)) {
-            std::cout << ">>> SNAP! Nhay coc ve dich thanh cong!" << std::endl;
+            std::cout << ">>> SNAP! Successfully reach to GOAL!" << std::endl;
             return v_goal;
         }
     }
