@@ -52,11 +52,21 @@ public:
     }
 
     ~RRTx() {
-        delete spatial_grid;
-        for (Node* n : V) {
-            // Cần cẩn thận việc delete node start/goal nếu chúng được tạo ở main
-            // Tạm thời để main quản lý việc delete node
+        if (spatial_grid) {
+            delete spatial_grid;
+            spatial_grid = nullptr;
         }
+
+        for (Node* n : V) {
+            if (n != v_start && n != v_goal) {
+                delete n;
+            }
+        }
+        
+        V.clear();
+        Q.clear();
+        Orphans.clear();
+        Obstacles.clear(); 
     }
 
     // Math Helpers
