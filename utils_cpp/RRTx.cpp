@@ -1,0 +1,485 @@
+#include "RRTx.h"
+
+double RRTx::unitBallVolume(int d) {
+    if(d == 2) {
+        return M_PI;
+    }
+
+    if(d == 3) {
+        return 4.0 * M_PI / 3.0;
+    }
+    
+    return std::pow(M_PI, d / 2.0) / std::tgamma(d / 2.0 + 1);
+}
+
+double RRTx::shrinkingBallRadius() {
+    double card_V = static_cast<double>(V.size());
+    if(card_V <= 1) {
+        return config::DELTA;
+    }
+    
+    double zeta_D = unitBallVolume(config::DIMENSION);
+    double term1 = (config::GAMMA / zeta_D) * (std::log(card_V) / card_V);
+    double r = std::pow(term1, 1.0 / config::DIMENSION);
+    
+    return std::max(r, config::DELTA * 1.5);
+}
+
+std::pair<double, double> RRTx::calculateKey(Node* v) {
+    // Key: (min(v.g, v.lmc), v.g)
+    return {std::min(v->g, v->lmc), v->g};
+}
+
+double RRTx::d(Node* u, Node* v) {
+    return model->distance(u, v);
+}
+
+bool RRTx::isCollision(Node* u, Node* v) {
+    return model->checkCollision(u, v);
+}
+
+bool RRTx::isInsideObstacle(Node* v) {
+    for(const auto& obs : Obstacles) {
+        if(obs->isInside(v->pos)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool RRTx::isSegmentInObstacle(const Vec2D& v_pos, const Vec2D& u_pos, Obstacle* o) {
+    return o->intersectSegment(v_pos, u_pos);
+}
+
+Node* RRTx::randomNode() {
+    double rx = dis_x(gen);
+    double ry = dis_y(gen);
+    return new Node(rx, ry);
+}
+
+Node* RRTx::nearestNode(Node* v) {
+    if(V.empty()) return nullptr;
+    
+    double search_radius = config::DELTA * 2.0;
+    std::vector<Node*> candidates = spatial_grid->getNeighbors(v->pos, search_radius);
+    if(candidates.empty()) {
+        candidates = V;
+    }
+    
+    Node* nearest_v = nullptr;
+    double minDist = std::numeric_limits<double>::infinity();
+    for(Node* u : candidates) {
+        double dist = d(u, v);
+        if(dist < minDist) {
+            minDist = dist;
+            nearest_v = u;
+        }
+    }
+    
+    return nearest_v;
+}
+
+std::vector<Node*> RRTx::near(Node* v, double r) {
+    std::vector<Node*> V_near;
+    std::vector<Node*> candidates = spatial_grid->getNeighbors(v->pos, r);
+    for(Node* u : candidates) {
+        if(d(u, v) <= r) {
+            V_near.push_back(u);
+        }
+    }
+    
+    return V_near;
+}
+
+Node* RRTx::saturate(Node* v, Node* v_nearest) {
+    Vec2D newPos = model->steer(v_nearest, v, config::DELTA);
+    return new Node(newPos.x, newPos.y);
+}
+
+void RRTx::makeParentOf(Node* v, Node* u) {
+    if(v->parent != nullptr) {
+        auto& siblings = v->parent->children;
+        siblings.erase(std::remove(siblings.begin(), siblings.end(), v), siblings.end());
+    }
+    
+    v->parent = u;
+    if(u != nullptr) {
+        u->children.push_back(v);
+    }
+}
+
+void RRTx::findParent(Node* v, const std::vector<Node*>& U, double r) {
+    for(Node* u : U) {
+        double dist_v_u = d(v, u);
+        if(dist_v_u <= r && (v->lmc > dist_v_u + u->lmc) && !isCollision(v, u)) {
+            v->parent = u;
+            v->lmc = dist_v_u + u->lmc;
+        }
+    }
+}
+
+void RRTx::verifyQueue(Node* v) {
+    auto it = std::find(Q.begin(), Q.end(), v);
+    if(it != Q.end()) {
+        Q.erase(it);
+        std::make_heap(Q.begin(), Q.end(), NodeComparator());
+    }
+    
+    Q.push_back(v);
+    std::push_heap(Q.begin(), Q.end(), NodeComparator());
+}
+
+void RRTx::reduceInconsistency(double r) {
+    while(!Q.empty()) {
+        Node* v_top = Q.front();
+        auto key_top = calculateKey(v_top);
+        auto key_bot = calculateKey(v_bot);
+        bool isRobotConsistent = (
+            (v_bot->lmc == v_bot->g) &&
+            (v_bot->g != std::numeric_limits<double>::infinity()) &&
+            (std::find(Q.begin(), Q.end(), v_bot) == Q.end())
+        );
+
+        if(key_top >= key_bot && isRobotConsistent) {
+            break;
+        }
+        
+        std::pop_heap(Q.begin(), Q.end(), NodeComparator());
+        Node* v = Q.back();
+        Q.pop_back();
+        
+        if(v->g - v->lmc > config::EPSILON) {
+            updateLMC(v);
+            rewireNeighbors(v, r);
+        }
+        
+        v->g = v->lmc;
+    }
+}
+
+void RRTx::verifyOrphan(Node* v) {
+    auto it = std::find(Q.begin(), Q.end(), v);
+    if(it != Q.end()) {
+        Q.erase(it);
+        std::make_heap(Q.begin(), Q.end(), NodeComparator());
+    }
+    
+    Orphans.insert(v);
+}
+
+void RRTx::propogateDescendants() {
+    std::vector<Node*> stack(Orphans.begin(), Orphans.end());
+    while(!stack.empty()) {
+        Node* v = stack.back();
+        stack.pop_back();
+        for(Node* child : v->children) {
+            if(Orphans.find(child) == Orphans.end()) {
+                Orphans.insert(child);
+                stack.push_back(child);
+            }
+        }
+    }
+    
+    for(Node* v : Orphans) {
+        std::vector<Node*> neighborsToWarn = v->N0_out;
+        neighborsToWarn.insert(neighborsToWarn.end(), v->Nr_out.begin(), v->Nr_out.end());
+        if(v->parent != nullptr) {
+            neighborsToWarn.push_back(v->parent);
+        }
+        
+        for(Node* u : neighborsToWarn) {
+            if(Orphans.find(u) == Orphans.end()) {
+                u->g = std::numeric_limits<double>::infinity();
+                verifyQueue(u);
+            }
+        }
+    }
+    
+    for(Node* v : Orphans) {
+        v->g = std::numeric_limits<double>::infinity();
+        v->lmc = std::numeric_limits<double>::infinity();
+        if(v->parent != nullptr) {
+            auto& siblings = v->parent->children;
+            siblings.erase(std::remove(siblings.begin(), siblings.end(), v), siblings.end());
+            v->parent = nullptr;
+        }
+    }
+    
+    Orphans.clear();
+}
+
+void RRTx::cullNeighbors(Node* v, double r) {
+    auto it = v->Nr_out.begin();
+    while(it != v->Nr_out.end()) {
+        Node* u = *it;
+        if(d(v, u) > r && v->parent != u) {
+            it = v->Nr_out.erase(it);
+            auto& u_Nr_in = u->Nr_in;
+            u_Nr_in.erase(std::remove(u_Nr_in.begin(), u_Nr_in.end(), v), u_Nr_in.end());
+        } else {
+            ++it;
+        }
+    }
+}
+
+void RRTx::rewireNeighbors(Node* v, double r) {
+    if(v->g - v->lmc > config::EPSILON) {
+        cullNeighbors(v, r);
+        std::vector<Node*> N_v_in = v->N0_in;
+        N_v_in.insert(N_v_in.end(), v->Nr_in.begin(), v->Nr_in.end());
+        for(Node* u : N_v_in) {
+            if(u == v->parent || isCollision(u, v)) {
+                continue;
+            }
+
+            double dist = d(u, v);
+            if(u->lmc > dist + v->lmc) {
+                u->lmc = dist + v->lmc;
+                makeParentOf(u, v);
+                if(u->g - u->lmc > config::EPSILON) {
+                    verifyQueue(u);
+                }
+            }
+        }
+    }
+}
+
+void RRTx::updateLMC(Node* v) {
+    double r = shrinkingBallRadius();
+    cullNeighbors(v, r);
+    
+    v->lmc = std::numeric_limits<double>::infinity();
+    Node* best_parent = nullptr;
+    std::vector<Node*> potential_parents = v->N0_out;
+    potential_parents.insert(potential_parents.end(), v->Nr_out.begin(), v->Nr_out.end());
+    for(Node* u : potential_parents) {
+        if(Orphans.find(u) != Orphans.end() || u->parent == v || isCollision(v, u)) {
+            continue;
+        }
+        
+        double dist_v_u = d(v, u);
+        double new_cost = dist_v_u + u->lmc;
+        if(new_cost < v->lmc) {
+            v->lmc = new_cost;
+            best_parent = u;
+        }
+    }
+    
+    if(best_parent != nullptr) {
+        makeParentOf(v, best_parent);
+    }
+}
+
+void RRTx::removeObstacle(Obstacle* o) {
+    auto it = std::remove(Obstacles.begin(), Obstacles.end(), o);
+    if(it != Obstacles.end()) {
+        Obstacles.erase(it, Obstacles.end());
+    }
+    
+    std::vector<Node*> nodes2Update;
+    for(Node* v : V) {
+        std::vector<Node*> neighbors = v->N0_out;
+        neighbors.insert(neighbors.end(), v->Nr_out.begin(), v->Nr_out.end());
+        for(Node* u : neighbors) {
+            if(isSegmentInObstacle(v->pos, u->pos, o) && !isCollision(v, u)) {
+                nodes2Update.push_back(v);
+                break;
+            }
+        }
+    }
+    
+    for(Node* v : nodes2Update) {
+        updateLMC(v);
+        if(v->lmc != v->g) {
+            verifyQueue(v);
+        }
+    }
+}
+
+void RRTx::addNewObstacle(Obstacle* o) {
+    Obstacles.push_back(o);
+    for(Node* v : V) {
+        std::vector<Node*> neighbors = v->N0_out;
+        neighbors.insert(neighbors.end(), v->Nr_out.begin(), v->Nr_out.end());
+        for(Node* u : neighbors) {
+            if(isSegmentInObstacle(v->pos, u->pos, o) && v->parent == u) {
+                verifyOrphan(v);
+            }
+        }
+    }
+}
+
+void RRTx::updateObstacles(double r, const std::vector<Obstacle*>& newObstacles) {
+    std::vector<Obstacle*> vanished;
+    for(Obstacle* o : Obstacles) {
+        bool found = false;
+        for(Obstacle* new_o : newObstacles) {
+            if(o == new_o) {
+                found = true;
+                break;
+            }
+        }
+
+        if(!found) {
+            vanished.push_back(o);
+        }
+    }
+    
+    if(!vanished.empty()) {
+        for(Obstacle* o : vanished) {
+            removeObstacle(o);
+        }
+
+        reduceInconsistency(r);
+    }
+    
+    std::vector<Obstacle*> appeared;
+    for(Obstacle* new_o : newObstacles) {
+        bool found = false;
+        for(Obstacle* o : Obstacles) {
+            if(o == new_o) {
+                found = true;
+                break;
+            }
+        }
+
+        if(!found) {
+            appeared.push_back(new_o);
+        }
+    }
+    
+    if(!appeared.empty()) {
+        for(Obstacle* o : appeared) {
+            addNewObstacle(o);
+        }
+
+        propogateDescendants();
+        verifyQueue(v_bot);
+        reduceInconsistency(r);
+    }
+}
+
+std::vector<Obstacle*> RRTx::getSensorData() {
+    return model->obstacles;
+}
+
+bool RRTx::obstacleHasChanged() {
+    std::vector<Obstacle*> current = getSensorData();
+    if(Obstacles.size() != current.size()) {
+        return true;
+    }
+    
+    for(Obstacle* o : Obstacles) {
+        bool found = false;
+        for(Obstacle* cur_o : current) {
+            if(o == cur_o) {
+                found = true;
+                break;
+            }
+        }
+
+        if(!found) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+Node* RRTx::updateRobot() {
+    if(v_bot == v_goal) {
+        return v_bot;
+    }
+    
+    double dist_to_goal = d(v_bot, v_goal);
+    if(dist_to_goal <= config::GOAL_RADIUS) {
+        if(!isCollision(v_bot, v_goal)) {
+            std::cout << ">>> SNAP! Nhay coc ve dich thanh cong!" << std::endl;
+            return v_goal;
+        }
+    }
+    
+    return (v_bot->parent == nullptr) ? v_bot : v_bot->parent;
+}
+
+void RRTx::run() {
+    while(v_bot != v_goal) {
+        step(true);
+        if(V.size() > config::MAX_ITER) {
+            break;
+        }
+    }
+}
+
+bool RRTx::step(bool move_robot) {
+    if(v_bot == v_goal) {
+        return true;
+    }
+    
+    double r = shrinkingBallRadius();
+    if(obstacleHasChanged()) {
+        std::vector<Obstacle*> currentVisibleObstacle = getSensorData();
+        updateObstacles(r, currentVisibleObstacle);
+    }
+    
+    if(move_robot && v_bot->lmc < std::numeric_limits<double>::infinity() && v_bot != v_goal) {
+        v_bot = updateRobot();
+    }
+    
+    const int SAMPLES_PER_FRAME = 50; 
+    for(int i = 0; i < SAMPLES_PER_FRAME; ++i) {
+        Node* v = randomNode();
+        Node* v_nearest = nearestNode(v);
+        if(v_nearest == nullptr) {
+            delete v;
+            continue;
+        }
+        
+        if(d(v, v_nearest) > config::DELTA) {
+            Node* v_saturated = saturate(v, v_nearest);
+            delete v;
+            v = v_saturated;
+        }
+        
+        if(!isInsideObstacle(v)) {
+            extend(v, r);
+            if(std::find(V.begin(), V.end(), v) != V.end()) {
+                rewireNeighbors(v, r);
+                reduceInconsistency(r);
+            }
+        } else {
+            delete v;
+        }
+    }
+    
+    v_bot->parent = nullptr;
+    v_bot->lmc = std::numeric_limits<double>::infinity();
+    std::vector<Node*> potential_parents = near(v_bot, r);
+    if(!potential_parents.empty()) {
+        findParent(v_bot, potential_parents, r);
+    }
+
+    return false;
+}
+
+void RRTx::extend(Node* v, double r) {
+    std::vector<Node*> V_near = near(v, r);
+    findParent(v, V_near, r);
+    if(v->parent == nullptr) {
+        return; 
+    }
+    
+    V.push_back(v);
+    spatial_grid->add(v);
+    for(Node* u : V_near) {
+        if(!isCollision(v, u)) {
+            v->N0_out.push_back(u);
+            u->Nr_in.push_back(v);
+        }
+        
+        if(!isCollision(u, v)) {
+            u->Nr_out.push_back(v);
+            v->N0_in.push_back(u);
+        }
+    }
+}

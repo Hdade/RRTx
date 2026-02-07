@@ -1,13 +1,10 @@
-import pygame
-import sys
 import numpy as np
-import rrtx_cpp
-
-Config = rrtx_cpp.config
-Node = rrtx_cpp.Node
-Rectangle = rrtx_cpp.Rectangle
-HolonomicModel = rrtx_cpp.HolonomicModel
-RRTx = rrtx_cpp.RRTx
+import pygame, sys
+from utils.config import *
+from utils.node import Node
+from utils.geometry import Rectangle
+from utils.model import HolonomicModel
+from utils.RRTx import RRTx
 
 COLOR_BG = (20, 20, 30)
 COLOR_OBSTACLE = (50, 50, 60)
@@ -22,29 +19,30 @@ COLOR_ORPHAN = (148, 0, 211)
 class Visualizer:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
-        pygame.display.set_caption(f"RRTX C++ Accelerated - FPS: 0")
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption("RRTX Algorithm - Senior Robotics Demo")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("Consolas", 14)
 
         self.init_simulation()
 
         self.last_move_time = 0
-        self.move_delay = 100
+        self.move_delay = 200
         
         self.show_tree = True
         self.paused = False
         self.dynamic_triggered = False
 
     def init_simulation(self):
-        self.start_node = Node(400.0, 550.0)
-        self.goal_node = Node(400.0, 280.0)
+        self.goal_node = Node(400, 550 - 400)
+        self.start_node = Node(400, 280)
 
         self.obstacles = []
         self.create_map()
+
         self.model = HolonomicModel(self.obstacles)
-        
         self.rrtx = RRTx(self.start_node, self.goal_node, self.model)
+        
         self.start_time = pygame.time.get_ticks()
 
     def create_map(self):
@@ -65,10 +63,11 @@ class Visualizer:
     def trigger_dynamic_event(self):
         print(">>> WARNING: DYNAMIC OBSTACLE DETECTED! <<<")
         new_obs = Rectangle(460, 420, 180, 30, 0) 
+        
         self.obstacles.append(new_obs)
         
-        r = self.rrtx.shrinking_ball_radius()
-        self.rrtx.update_obstacles(r, self.obstacles)
+        r = self.rrtx.shrinkingBallRadius()
+        self.rrtx.updateObstacles(r, self.obstacles)
         self.dynamic_triggered = True
 
     def draw_obstacles(self):
@@ -99,32 +98,28 @@ class Visualizer:
     def draw_path(self):
         path = []
         curr = self.rrtx.v_bot
-        found_goal = False
         limit = 0
-        
         while curr is not None and limit < 5000:
-            path.append((curr.pos[0], curr.pos[1]))
-            if curr == self.goal_node: 
-                found_goal = True
+            path.append(curr.pos)
+
+            if curr == self.rrtx.v_goal:
                 break
 
             curr = curr.parent
             limit += 1
             
-        if found_goal and len(path) > 1:
+        if len(path) > 1:
             pygame.draw.lines(self.screen, COLOR_PATH, False, path, 4)
 
     def draw_ui(self):
         fps = int(self.clock.get_fps())
-        pygame.display.set_caption(f"RRTX C++ Backend - FPS: {fps}")
         nodes_count = len(self.rrtx.V)
         orphan_count = len(self.rrtx.Orphans)
+        cost = self.rrtx.v_bot.lmc if self.rrtx.v_bot.lmc != float('inf') else "Inf"
         
-        cost = self.rrtx.v_bot.lmc
-        cost_str = f"{cost:.2f}" if cost < float('inf') else "Inf"
         texts = [
             f"FPS: {fps} | Nodes: {nodes_count} | Orphans: {orphan_count}",
-            f"Robot Cost (LMC): {cost_str}",
+            f"Robot Cost (LMC): {cost}",
             f"Controls: [Space] Pause | [T] Toggle Tree | [Click] Add Obstacle",
         ]
         
@@ -151,8 +146,8 @@ class Visualizer:
                     mx, my = pygame.mouse.get_pos()
                     new_obs = Rectangle(mx, my, 50, 50, 0)
                     self.obstacles.append(new_obs)
-                    r = self.rrtx.shrinking_ball_radius()
-                    self.rrtx.update_obstacles(r, self.obstacles)
+                    r = self.rrtx.shrinkingBallRadius()
+                    self.rrtx.updateObstacles(r, self.obstacles)
 
             if not self.paused:
                 current_time = pygame.time.get_ticks()
@@ -163,31 +158,27 @@ class Visualizer:
                 
                 self.rrtx.step(move_robot=should_move)
                 if not self.dynamic_triggered and (current_time - self.start_time > 3000):
-                     if self.rrtx.v_bot.lmc < float('inf'):
-                          self.trigger_dynamic_event()
+                    if self.rrtx.v_bot.lmc < float('inf'):
+                        self.trigger_dynamic_event()
 
             self.screen.fill(COLOR_BG)
+            
             self.draw_obstacles()
             self.draw_tree()
             self.draw_orphans()
             self.draw_path()
             
-            pygame.draw.circle(self.screen, COLOR_GOAL, 
-                             (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 8)
-            pygame.draw.circle(self.screen, (255, 255, 0), 
-                             (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 
-                             int(Config.GOAL_RADIUS), 1)
+            pygame.draw.circle(self.screen, COLOR_START, (int(self.start_node.pos[0]), int(self.start_node.pos[1])), 8)
+            pygame.draw.circle(self.screen, COLOR_GOAL, (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 8)
             
             bot_pos = (int(self.rrtx.v_bot.pos[0]), int(self.rrtx.v_bot.pos[1]))
             pygame.draw.circle(self.screen, COLOR_ROBOT, bot_pos, 8)
-            pygame.draw.circle(self.screen, (255, 255, 0), bot_pos, int(Config.GOAL_RADIUS), 1)
-            r_search = self.rrtx.shrinking_ball_radius()
-            pygame.draw.circle(self.screen, (100, 100, 100), bot_pos, int(r_search), 1)
-
+            r_search = self.rrtx.shrinkingBallRadius()
+            pygame.draw.circle(self.screen, (100, 100, 100), bot_pos, int(r_search), 1)            
             self.draw_ui()
             
             pygame.display.flip()
-            self.clock.tick(120) 
+            self.clock.tick(80)
 
         pygame.quit()
         sys.exit()
