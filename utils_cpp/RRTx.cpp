@@ -69,6 +69,10 @@ Node* RRTx::nearestNode(Node* v) {
     Node* nearest_v = nullptr;
     double minDist = std::numeric_limits<double>::infinity();
     for(Node* u : candidates) {
+        if(u->lmc >= std::numeric_limits<double>::infinity()) {
+            continue;
+        }
+
         double dist = d(u, v);
         if(dist < minDist) {
             minDist = dist;
@@ -457,6 +461,13 @@ bool RRTx::step(bool move_robot) {
     std::vector<Node*> potential_parents = near(v_bot, r);
     if(!potential_parents.empty()) {
         findParent(v_bot, potential_parents, r);
+    }
+
+    if(v_bot->lmc >= std::numeric_limits<double>::infinity()) {
+        potential_parents = near(v_bot, config::DELTA);
+        if(!potential_parents.empty()) {
+            findParent(v_bot, potential_parents, config::DELTA);
+        }
     }
 
     return false;

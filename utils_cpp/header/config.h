@@ -9,9 +9,9 @@ namespace config {
     
     // RRTX Hyperparameters
     static constexpr int MAX_ITER = 10000;
-    static constexpr double DELTA = 20.0;
+    static constexpr double DELTA = 10.0;
     static constexpr double EPSILON = 5.0;
-    static constexpr double GAMMA = 1000.0;
+    static constexpr double GAMMA = 5000.0;
     static constexpr double GOAL_RADIUS = 20.0;
 
     // Map Dimensions
@@ -20,7 +20,7 @@ namespace config {
     static constexpr int DIMENSION = 2;
 
     // Spatial Grid Settings
-    static constexpr double GRID_SIZE = 40.0;
+    static constexpr double GRID_SIZE = 2.0 * DELTA;
 };
 
 #endif
