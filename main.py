@@ -37,7 +37,7 @@ class Visualizer:
         self.dynamic_triggered = False
 
     def init_simulation(self):
-        self.start_node = Node(400.0, 550.0)
+        self.start_node = Node(400.0, 550.0 - 400.0)
         self.goal_node = Node(400.0, 280.0)
 
         self.obstacles = []
@@ -172,15 +172,13 @@ class Visualizer:
             self.draw_orphans()
             self.draw_path()
             
-            pygame.draw.circle(self.screen, COLOR_GOAL, 
-                             (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 8)
-            pygame.draw.circle(self.screen, (255, 255, 0), 
-                             (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 
-                             int(Config.GOAL_RADIUS), 1)
+            pygame.draw.circle(self.screen, COLOR_GOAL, (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 8)
+            pygame.draw.circle(self.screen, (255, 255, 0), (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), int(Config.GOAL_RADIUS), 1)            
             
             bot_pos = (int(self.rrtx.v_bot.pos[0]), int(self.rrtx.v_bot.pos[1]))
             pygame.draw.circle(self.screen, COLOR_ROBOT, bot_pos, 8)
             pygame.draw.circle(self.screen, (255, 255, 0), bot_pos, int(Config.GOAL_RADIUS), 1)
+            
             r_search = self.rrtx.shrinking_ball_radius()
             pygame.draw.circle(self.screen, (100, 100, 100), bot_pos, int(r_search), 1)
 

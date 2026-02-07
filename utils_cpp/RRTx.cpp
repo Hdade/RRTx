@@ -357,6 +357,8 @@ void RRTx::updateObstacles(double r, const std::vector<Obstacle*>& newObstacles)
         verifyQueue(v_bot);
         reduceInconsistency(r);
     }
+
+    model->obstacles = this->Obstacles;
 }
 
 std::vector<Obstacle*> RRTx::getSensorData() {
