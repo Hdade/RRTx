@@ -6,10 +6,10 @@ cd build
 
 make -j4
 
-echo "📦 Copying libraries to out..."
+echo "Copying libraries to out..."
 cp rrtx_cpp.cpython-*.so ..
 
 cd ..
 
-echo "🚀 Running Visualizer..."
+echo "Running Visualizer..."
 python3 main.py

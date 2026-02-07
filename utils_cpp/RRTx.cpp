@@ -265,9 +265,7 @@ void RRTx::updateLMC(Node* v) {
         }
     }
     
-    if(best_parent != nullptr) {
-        makeParentOf(v, best_parent);
-    }
+    makeParentOf(v, best_parent);
 }
 
 void RRTx::removeObstacle(Obstacle* o) {
@@ -329,7 +327,8 @@ void RRTx::updateObstacles(double r, const std::vector<Obstacle*>& newObstacles)
         for(Obstacle* o : vanished) {
             removeObstacle(o);
         }
-
+        
+        model->obstacles = this->Obstacles;
         reduceInconsistency(r);
     }
     
@@ -352,13 +351,12 @@ void RRTx::updateObstacles(double r, const std::vector<Obstacle*>& newObstacles)
         for(Obstacle* o : appeared) {
             addNewObstacle(o);
         }
+        model->obstacles = this->Obstacles;
 
         propogateDescendants();
         verifyQueue(v_bot);
         reduceInconsistency(r);
     }
-
-    model->obstacles = this->Obstacles;
 }
 
 std::vector<Obstacle*> RRTx::getSensorData() {
