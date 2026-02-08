@@ -101,6 +101,8 @@ Node* RRTx::saturate(Node* v, Node* v_nearest) {
 }
 
 void RRTx::makeParentOf(Node* v, Node* u) {
+    if(v->parent == u) return;
+
     if(v->parent != nullptr) {
         auto& siblings = v->parent->children;
         siblings.erase(std::remove(siblings.begin(), siblings.end(), v), siblings.end());
@@ -113,17 +115,21 @@ void RRTx::makeParentOf(Node* v, Node* u) {
 }
 
 void RRTx::findParent(Node* v, const std::vector<Node*>& U, double r) {
+    makeParentOf(v, nullptr); 
+    v->lmc = std::numeric_limits<double>::infinity();
     for(Node* u : U) {
         double dist_v_u = d(v, u);
-        if(dist_v_u <= r && (v->lmc > dist_v_u + u->lmc) && !isCollision(v, u)) {
-            v->parent = u;
-            v->lmc = dist_v_u + u->lmc;
+        if(dist_v_u > r || isCollision(v, u)) continue;
+        double potential_lmc = dist_v_u + u->lmc;
+        if(v->lmc > potential_lmc) {
+            v->lmc = potential_lmc;
+            makeParentOf(v, u);
         }
     }
 }
 
 void RRTx::verifyQueue(Node* v) {
-    if (Q.contains(v)) {
+    if(Q.contains(v)) {
         Q.update(v);
     } else {
         Q.insert(v);
@@ -156,7 +162,7 @@ void RRTx::reduceInconsistency(double r) {
     }
 }
 void RRTx::verifyOrphan(Node* v) {
-    if (Q.contains(v)) {
+    if(Q.contains(v)) {
         Q.remove(v);
     }
     Orphans.insert(v);
@@ -164,9 +170,13 @@ void RRTx::verifyOrphan(Node* v) {
 
 void RRTx::propogateDescendants() {
     std::vector<Node*> stack(Orphans.begin(), Orphans.end());
+    // std::cout << "Propagating... Initial Orphans: " << stack.size() << std::endl;
     while(!stack.empty()) {
         Node* v = stack.back();
         stack.pop_back();
+        // if(v->children.size() > 0) {
+        //     std::cout << "Node tại (" << v->pos.x << ") lây lan cho " << v->children.size() << " con." << std::endl;
+        // }
         for(Node* child : v->children) {
             if(Orphans.find(child) == Orphans.end()) {
                 Orphans.insert(child);

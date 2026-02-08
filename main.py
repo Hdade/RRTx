@@ -99,12 +99,10 @@ class Visualizer:
                 pygame.draw.line(self.screen, COLOR_TREE, start_pos, end_pos, 1)
 
     def draw_orphans(self):
-        if not self.rrtx.Orphans:
-            return
-        
-        for node in self.rrtx.Orphans:
-            pos = (int(node.pos[0]), int(node.pos[1]))
-            pygame.draw.circle(self.screen, COLOR_ORPHAN, pos, 2)
+        for node in self.rrtx.V:
+            if node.lmc == float('inf'): 
+                pos = (int(node.pos[0]), int(node.pos[1]))
+                pygame.draw.circle(self.screen, COLOR_ORPHAN, pos, 2)
 
     def draw_path(self):
         path = []
