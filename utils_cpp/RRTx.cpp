@@ -168,14 +168,14 @@ void RRTx::verifyOrphan(Node* v) {
     Orphans.insert(v);
 }
 
-void RRTx::propogateDescendants() {
+void RRTx::propagateDescendants() {
     std::vector<Node*> stack(Orphans.begin(), Orphans.end());
     // std::cout << "Propagating... Initial Orphans: " << stack.size() << std::endl;
     while(!stack.empty()) {
         Node* v = stack.back();
         stack.pop_back();
         // if(v->children.size() > 0) {
-        //     std::cout << "Node tại (" << v->pos.x << ") lây lan cho " << v->children.size() << " con." << std::endl;
+        //     std::cout << "Node at (" << v->pos.x << ") propagate to " << v->children.size() << " children." << std::endl;
         // }
         for(Node* child : v->children) {
             if(Orphans.find(child) == Orphans.end()) {
@@ -358,7 +358,7 @@ void RRTx::updateObstacles(double r, const std::vector<Obstacle*>& newObstacles)
         }
         model->obstacles = this->Obstacles;
 
-        propogateDescendants();
+        propagateDescendants();
         verifyQueue(v_bot);
         reduceInconsistency(r);
     }

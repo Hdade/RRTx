@@ -86,7 +86,7 @@ class RRTx:
                 if self.isSegmentInObstacle(v.pos, u.pos, o) and v.parent == u:
                     self.verifyOrphan(v)
 
-    def propogateDescendants(self):
+    def propagateDescendants(self):
         """Algorithm 9"""
         orphanList = list(self.Orphans)
         
@@ -135,7 +135,7 @@ class RRTx:
                 self.addNewObstacle(o)
 
             self.Obstacles.extend(appeared)
-            self.propogateDescendants()
+            self.propagateDescendants()
             self.verifyQueue(self.v_bot)
             self.reduceInconsistency(r)
 

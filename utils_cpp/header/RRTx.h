@@ -94,7 +94,7 @@ public:
     // Dynamic Updates (Queue & Orphans)
     void verifyQueue(Node* v);
     void verifyOrphan(Node* v);
-    void propogateDescendants();
+    void propagateDescendants();
     void makeParentOf(Node* v, Node* u);
 
     // Obstacle Management
