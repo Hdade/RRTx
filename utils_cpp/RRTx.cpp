@@ -123,35 +123,30 @@ void RRTx::findParent(Node* v, const std::vector<Node*>& U, double r) {
 }
 
 void RRTx::verifyQueue(Node* v) {
-    auto it = std::find(Q.begin(), Q.end(), v);
-    if(it != Q.end()) {
-        Q.erase(it);
-        std::make_heap(Q.begin(), Q.end(), NodeComparator());
+    if (Q.contains(v)) {
+        Q.update(v);
+    } else {
+        Q.insert(v);
     }
-    
-    Q.push_back(v);
-    std::push_heap(Q.begin(), Q.end(), NodeComparator());
 }
 
 void RRTx::reduceInconsistency(double r) {
     while(!Q.empty()) {
-        Node* v_top = Q.front();
+        Node* v_top = Q.top();
         auto key_top = calculateKey(v_top);
         auto key_bot = calculateKey(v_bot);
+        
         bool isRobotConsistent = (
             (v_bot->lmc == v_bot->g) &&
             (v_bot->g != std::numeric_limits<double>::infinity()) &&
-            (std::find(Q.begin(), Q.end(), v_bot) == Q.end())
+            (!Q.contains(v_bot))
         );
 
         if(key_top >= key_bot && isRobotConsistent) {
             break;
         }
         
-        std::pop_heap(Q.begin(), Q.end(), NodeComparator());
-        Node* v = Q.back();
-        Q.pop_back();
-        
+        Node* v = Q.pop(); 
         if(v->g - v->lmc > config::EPSILON) {
             updateLMC(v);
             rewireNeighbors(v, r);
@@ -160,14 +155,10 @@ void RRTx::reduceInconsistency(double r) {
         v->g = v->lmc;
     }
 }
-
 void RRTx::verifyOrphan(Node* v) {
-    auto it = std::find(Q.begin(), Q.end(), v);
-    if(it != Q.end()) {
-        Q.erase(it);
-        std::make_heap(Q.begin(), Q.end(), NodeComparator());
+    if (Q.contains(v)) {
+        Q.remove(v);
     }
-    
     Orphans.insert(v);
 }
 

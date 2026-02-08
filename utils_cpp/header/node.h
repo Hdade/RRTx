@@ -16,16 +16,16 @@ struct Node {
     double g, lmc;
     Node* parent;
     
+    int heap_index; 
     std::vector<Node*> children;
     std::vector<Node*> N0_in;
     std::vector<Node*> N0_out;
     std::vector<Node*> Nr_in;
     std::vector<Node*> Nr_out;
 
-    Node(double x, double y) : pos(x, y), parent(NULL) {
+    Node(double x, double y) : pos(x, y), parent(nullptr), heap_index(-1) {
         g = std::numeric_limits<double>::infinity();
         lmc = std::numeric_limits<double>::infinity();
-
         children.reserve(10);
     }
 
@@ -52,7 +52,7 @@ struct NodeComparator {
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Node& n) {
-    os << "Node(" << std::fixed << std::setprecision(2) << n.pos.x << ", " << n.pos.y << " | g=" << n.g << ", lmc=" << n.lmc << ")";
+    os << "Node(" << std::fixed << std::setprecision(2) << n.pos.x << ", " << n.pos.y << " | g=" << n.g << ", lmc=" << n.lmc << ", idx=" << n.heap_index << ")";
     return os;
 }
 

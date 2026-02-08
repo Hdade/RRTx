@@ -14,6 +14,7 @@
 #include "geometry.h"
 #include "model.h"
 #include "spatialGrid.h"
+#include "IndexedHeap.h"
 
 class RRTx {
 private:
@@ -23,7 +24,8 @@ private:
 public:
     Node* v_bot;
     std::vector<Node*> V;
-    std::vector<Node*> Q; 
+    IndexedHeap Q;
+    // std::vector<Node*> Q; 
     std::vector<Obstacle*> Obstacles;
     std::unordered_set<Node*> Orphans;
 
@@ -49,6 +51,7 @@ public:
 
         V.push_back(v_goal);
         spatial_grid->add(v_goal);
+        Q.insert(v_goal);
     }
 
     ~RRTx() {
@@ -64,7 +67,7 @@ public:
         }
         
         V.clear();
-        Q.clear();
+        // Q.clear();
         Orphans.clear();
         Obstacles.clear(); 
     }

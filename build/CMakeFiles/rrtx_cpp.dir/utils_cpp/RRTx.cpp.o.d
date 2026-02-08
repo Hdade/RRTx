@@ -236,4 +236,5 @@ CMakeFiles/rrtx_cpp.dir/utils_cpp/RRTx.cpp.o: \
  /mnt/d/Code/RRTx/utils_cpp/header/spatialGrid.h \
  /usr/include/c++/14/unordered_map \
  /usr/include/c++/14/bits/unordered_map.h /usr/include/c++/14/utility \
- /usr/include/c++/14/bits/stl_relops.h
+ /usr/include/c++/14/bits/stl_relops.h \
+ /mnt/d/Code/RRTx/utils_cpp/header/IndexedHeap.h

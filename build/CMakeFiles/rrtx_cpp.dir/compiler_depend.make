@@ -17,6 +17,7 @@ CMakeFiles/rrtx_cpp.dir/main.cpp.o: /mnt/d/Code/RRTx/main.cpp \
   _deps/pybind11-src/include/pybind11/pybind11.h \
   _deps/pybind11-src/include/pybind11/pytypes.h \
   _deps/pybind11-src/include/pybind11/stl.h \
+  /mnt/d/Code/RRTx/utils_cpp/header/IndexedHeap.h \
   /mnt/d/Code/RRTx/utils_cpp/header/RRTx.h \
   /mnt/d/Code/RRTx/utils_cpp/header/config.h \
   /mnt/d/Code/RRTx/utils_cpp/header/geometry.h \
@@ -516,6 +517,7 @@ CMakeFiles/rrtx_cpp.dir/main.cpp.o: /mnt/d/Code/RRTx/main.cpp \
   /usr/lib/linux/uapi/x86/asm/types.h
 
 CMakeFiles/rrtx_cpp.dir/utils_cpp/RRTx.cpp.o: /mnt/d/Code/RRTx/utils_cpp/RRTx.cpp \
+  /mnt/d/Code/RRTx/utils_cpp/header/IndexedHeap.h \
   /mnt/d/Code/RRTx/utils_cpp/header/RRTx.h \
   /mnt/d/Code/RRTx/utils_cpp/header/config.h \
   /mnt/d/Code/RRTx/utils_cpp/header/geometry.h \
@@ -1195,11 +1197,9 @@ CMakeFiles/rrtx_cpp.dir/utils_cpp/RRTx.cpp.o:
 
 /usr/include/python3.13/bytesobject.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/struct_timeval.h:
+/usr/include/python3.13/cpython/modsupport.h:
 
-/usr/include/c++/14/bits/stl_relops.h:
-
-/usr/include/features-time64.h:
+/usr/include/python3.13/bytearrayobject.h:
 
 /usr/include/c++/14/bits/stl_queue.h:
 
@@ -1349,11 +1349,7 @@ _deps/pybind11-src/include/pybind11/buffer_info.h:
 
 /usr/include/c++/14/bits/forward_list.h:
 
-/usr/include/c++/14/bits/memory_resource.h:
-
-/usr/include/c++/14/cstring:
-
-/usr/include/c++/14/cwchar:
+/usr/include/c++/14/bits/exception_ptr.h:
 
 /usr/include/python3.13/descrobject.h:
 
@@ -1441,6 +1437,12 @@ _deps/pybind11-src/include/pybind11/detail/type_caster_base.h:
 
 /usr/include/c++/14/bits/basic_ios.h:
 
+/usr/include/c++/14/bits/locale_facets.h:
+
+/usr/include/c++/14/bits/basic_string.h:
+
+/usr/include/c++/14/tr1/riemann_zeta.tcc:
+
 /usr/include/x86_64-linux-gnu/c++/14/bits/c++locale.h:
 
 /usr/include/python3.13/pyport.h:
@@ -1481,11 +1483,11 @@ _deps/pybind11-src/include/pybind11/detail/init.h:
 
 /usr/include/pthread.h:
 
-/usr/include/c++/14/bits/locale_facets.h:
+/usr/include/c++/14/bits/memory_resource.h:
 
-/usr/include/c++/14/bits/basic_string.h:
+/usr/include/c++/14/cstring:
 
-/usr/include/c++/14/tr1/riemann_zeta.tcc:
+/usr/include/c++/14/cwchar:
 
 /usr/include/python3.13/enumobject.h:
 
@@ -1544,8 +1546,6 @@ _deps/pybind11-src/include/pybind11/stl.h:
 /usr/include/linux/limits.h:
 
 /usr/include/c++/14/bits/alloc_traits.h:
-
-/usr/include/c++/14/bits/exception_ptr.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/mm_malloc.h:
 
@@ -1626,6 +1626,12 @@ _deps/pybind11-src/include/pybind11/detail/typeid.h:
 /usr/include/c++/14/bits/exception_defines.h:
 
 /usr/include/c++/14/tr1/legendre_function.tcc:
+
+/usr/include/x86_64-linux-gnu/bits/types/struct_timeval.h:
+
+/usr/include/c++/14/bits/stl_relops.h:
+
+/usr/include/features-time64.h:
 
 /usr/include/c++/14/bits/sstream.tcc:
 
@@ -1813,9 +1819,9 @@ _deps/pybind11-src/include/pybind11/cast.h:
 
 /usr/include/python3.13/moduleobject.h:
 
-/usr/include/c++/14/bits/stl_algo.h:
-
 /usr/include/c++/14/cmath:
+
+/usr/include/c++/14/bits/stl_algo.h:
 
 /usr/include/c++/14/sstream:
 
@@ -1859,10 +1865,6 @@ _deps/pybind11-src/include/pybind11/cast.h:
 
 /usr/include/c++/14/utility:
 
-/usr/include/python3.13/cpython/modsupport.h:
-
-/usr/include/python3.13/bytearrayobject.h:
-
 CMakeFiles/rrtx_cpp.dir/main.cpp.o:
 
 /usr/include/x86_64-linux-gnu/bits/floatn-common.h:
@@ -1890,6 +1892,8 @@ CMakeFiles/rrtx_cpp.dir/main.cpp.o:
 /usr/include/x86_64-linux-gnu/bits/types/__FILE.h:
 
 /usr/include/python3.13/cpython/weakrefobject.h:
+
+/mnt/d/Code/RRTx/utils_cpp/header/IndexedHeap.h:
 
 /usr/include/math.h:
 

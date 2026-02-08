@@ -417,4 +417,5 @@ CMakeFiles/rrtx_cpp.dir/main.cpp.o: /mnt/d/Code/RRTx/main.cpp \
  /usr/include/c++/14/bits/stl_numeric.h \
  /usr/include/c++/14/pstl/glue_numeric_defs.h \
  /mnt/d/Code/RRTx/utils_cpp/header/model.h \
- /mnt/d/Code/RRTx/utils_cpp/header/spatialGrid.h
+ /mnt/d/Code/RRTx/utils_cpp/header/spatialGrid.h \
+ /mnt/d/Code/RRTx/utils_cpp/header/IndexedHeap.h
