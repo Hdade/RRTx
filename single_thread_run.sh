@@ -12,4 +12,4 @@ cp rrtx_cpp.cpython-*.so ..
 cd ..
 
 echo "Running Visualizer..."
-python3 main.py
+python3 single_thread_main.py
