@@ -92,7 +92,6 @@ class Visualizer:
                 obs = self.obstacles[i]
                 vertices = obs.get_vertices() 
                 if self.is_point_inside_polygon((mx, my), vertices):
-                    print(f"Removed obstacle at index {i}")
                     self.obstacles.pop(i)
                     if self.current_state == STATE_RUNNING and self.rrtx:
                         r = self.rrtx.shrinking_ball_radius()
