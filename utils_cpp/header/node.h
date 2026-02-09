@@ -23,6 +23,8 @@ struct Node {
     std::vector<Node*> Nr_in;
     std::vector<Node*> Nr_out;
 
+    double heuristic_val = 0.0;
+
     Node(double x, double y) : pos(x, y), parent(nullptr), heap_index(-1) {
         g = std::numeric_limits<double>::infinity();
         lmc = std::numeric_limits<double>::infinity();

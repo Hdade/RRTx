@@ -55,7 +55,8 @@ PYBIND11_MODULE(rrtx_cpp, m) {
         .def_readwrite("pos", &Node::pos)
         .def_readwrite("g", &Node::g)
         .def_readwrite("lmc", &Node::lmc)
-        .def_readwrite("parent", &Node::parent, py::return_value_policy::reference);
+        .def_readwrite("parent", &Node::parent, py::return_value_policy::reference)
+        .def_readwrite("heuristic_val", &Node::heuristic_val);
 
     py::class_<HolonomicModel>(m, "HolonomicModel")
         .def(py::init<const std::vector<Obstacle*>&>());
@@ -67,5 +68,8 @@ PYBIND11_MODULE(rrtx_cpp, m) {
         .def_readwrite("Orphans", &RRTx::Orphans, py::return_value_policy::reference)
         .def("step", &RRTx::step, py::arg("move_robot") = true)
         .def("shrinking_ball_radius", &RRTx::shrinkingBallRadius)
-        .def("update_obstacles", &RRTx::updateObstacles);
+        .def("update_obstacles", &RRTx::updateObstacles)
+        .def("update_sampling_distribution", &RRTx::updateSamplingDistribution)
+        .def("obstacleHasChanged", &RRTx::obstacleHasChanged)
+        .def("update_sampling_distribution", &RRTx::updateSamplingDistribution);
 }

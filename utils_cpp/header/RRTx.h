@@ -20,6 +20,10 @@ class RRTx {
 private:
     Node* v_start;
     Node* v_goal;
+    std::vector<double> heuristic_map;
+    int map_width = 0;
+    int map_height = 0;
+    double getHeuristicProbability(double x, double y);
     
 public:
     Node* v_bot;
@@ -114,6 +118,8 @@ public:
     Node* updateRobot();
     void run();
     bool step(bool move_robot = true);
+
+    void updateSamplingDistribution(const std::vector<double>& flat_map, int width, int height);
 };
 
 #endif

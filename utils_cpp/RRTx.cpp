@@ -51,10 +51,44 @@ bool RRTx::isSegmentInObstacle(const Vec2D& v_pos, const Vec2D& u_pos, Obstacle*
     return o->intersectSegment(v_pos, u_pos);
 }
 
+void RRTx::updateSamplingDistribution(const std::vector<double>& flat_map, int width, int height) {
+    this->heuristic_map = flat_map;
+    this->map_width = width;
+    this->map_height = height;
+}
+
+double RRTx::getHeuristicProbability(double x, double y) {
+    if(heuristic_map.empty()) {
+        return 1.0;
+    }
+
+    int px = static_cast<int>(x); 
+    int py = static_cast<int>(y);
+    px = (px < 0) ? 0 : px;
+    px = (px >= map_width) ? map_width - 1 : px;
+    py = (py < 0) ? 0 : py;
+    py = (py >= map_height) ? map_height - 1 : py;
+    return heuristic_map[py * map_width + px];
+}
+
 Node* RRTx::randomNode() {
+    std::uniform_real_distribution<double> coin_flip(0.0, 1.0);
+    if(!heuristic_map.empty() && coin_flip(gen) < 0.6) {
+        for(int i = 0; i < 100; ++i) {
+            double rx = dis_x(gen);
+            double ry = dis_y(gen);
+            double prob = getHeuristicProbability(rx, ry);
+            if(prob > coin_flip(gen)) {
+                return new Node(rx, ry);
+            }
+        }
+    }
+
     double rx = dis_x(gen);
     double ry = dis_y(gen);
-    return new Node(rx, ry);
+    Node* newNode = new Node(rx, ry);
+    newNode->heuristic_val = getHeuristicProbability(rx, ry);
+    return newNode;
 }
 
 Node* RRTx::nearestNode(Node* v) {
@@ -97,7 +131,9 @@ std::vector<Node*> RRTx::near(Node* v, double r) {
 
 Node* RRTx::saturate(Node* v, Node* v_nearest) {
     Vec2D newPos = model->steer(v_nearest, v, config::DELTA);
-    return new Node(newPos.x, newPos.y);
+    Node* newNode = new Node(newPos.x, newPos.y);
+    newNode->heuristic_val = getHeuristicProbability(newPos.x, newPos.y);
+    return newNode;
 }
 
 void RRTx::makeParentOf(Node* v, Node* u) {
