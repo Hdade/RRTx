@@ -86,7 +86,7 @@ chmod +x run.sh
 
 ### Pure python
 ```bash
-python ./
+python ./oldRRTx/main.py
 ```
 
 ---
