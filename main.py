@@ -119,7 +119,8 @@ class Visualizer:
         flat_map = heatmap_full.flatten().astype(np.float64)
         if self.rrtx:
             self.rrtx.update_sampling_distribution(flat_map, Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT)
-            print(">>> Updated GAN Sampling Distribution to C++ Backend!")
+            self.rrtx.update_node_heuristics() 
+            print(">>> Updated GAN Sampling Distribution & Refreshed Node Colors!")
 
     def create_borders(self):
         w, h = Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT
@@ -161,6 +162,7 @@ class Visualizer:
             if self.current_state == STATE_RUNNING and self.rrtx:
                 r = self.rrtx.shrinking_ball_radius()
                 self.rrtx.update_obstacles(r, self.obstacles)
+                self.sampling_map_updated = False 
         else:
             for i in range(len(self.obstacles) - 1, -1, -1):
                 obs = self.obstacles[i]
@@ -170,6 +172,7 @@ class Visualizer:
                     if self.current_state == STATE_RUNNING and self.rrtx:
                         r = self.rrtx.shrinking_ball_radius()
                         self.rrtx.update_obstacles(r, self.obstacles)
+                        self.sampling_map_updated = False
                     break
 
     def run(self):

@@ -120,6 +120,7 @@ public:
     bool step(bool move_robot = true);
 
     void updateSamplingDistribution(const std::vector<double>& flat_map, int width, int height);
+    void updateNodeHeuristics();
 };
 
 #endif

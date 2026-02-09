@@ -57,6 +57,14 @@ void RRTx::updateSamplingDistribution(const std::vector<double>& flat_map, int w
     this->map_height = height;
 }
 
+void RRTx::updateNodeHeuristics() {
+    if(heuristic_map.empty()) return;
+
+    for(Node* v : V) {
+        v->heuristic_val = getHeuristicProbability(v->pos.x, v->pos.y);
+    }
+}
+
 double RRTx::getHeuristicProbability(double x, double y) {
     if(heuristic_map.empty()) {
         return 1.0;
