@@ -1,7 +1,7 @@
 import pygame, sys, cv2
 import numpy as np
 import rrtx_cpp
-from ViT_GAN.inferenceHelper import GANInference
+from Hybrid_ViT_GAN.inferenceHelper import GANInference
 
 Config = rrtx_cpp.config
 Node = rrtx_cpp.Node

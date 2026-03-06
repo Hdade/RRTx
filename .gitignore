@@ -4,4 +4,4 @@ venv/
 build/
 build_linux/
 __pycache__/
-checkpoints
+checkpoints/

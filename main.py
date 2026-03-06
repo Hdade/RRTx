@@ -1,6 +1,7 @@
 import numpy as np
+import pygame, sys, cv2, rrtx_cpp, multiprocessing, queue, argparse
 from gan_worker import gan_worker_loop
-import pygame, sys, cv2, rrtx_cpp, multiprocessing, queue
+from sfd_worker import sfd_worker_loop
 
 Config = rrtx_cpp.config
 Node = rrtx_cpp.Node
@@ -23,14 +24,15 @@ COLOR_HEURISTIC_TREE = (0, 255, 0)
 STATE_SETUP_OBSTACLES = 0
 STATE_SET_START = 1
 STATE_SET_GOAL = 2
-STATE_TEST_GAN = 3
+STATE_TEST_MODEL = 3
 STATE_RUNNING = 4
 
 class Visualizer:
-    def __init__(self):
+    def __init__(self, model_type="gan"):
         pygame.init()
         self.screen = pygame.display.set_mode((Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
-        pygame.display.set_caption(f"RRTX C++ Backend Interactive Planner")
+        self.model_type = model_type.upper()
+        pygame.display.set_caption(f"RRTX C++ Backend Interactive Planner - {self.model_type} Model")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("Consolas", 14)
         self.large_font = pygame.font.SysFont("Consolas", 20, bold=True)
@@ -50,26 +52,30 @@ class Visualizer:
         self.paused = False
         self.start_time = 0
 
-        self.gan_input_queue = multiprocessing.Queue()
-        self.gan_output_queue = multiprocessing.Queue()
+        self.model_input_queue = multiprocessing.Queue()
+        self.model_output_queue = multiprocessing.Queue()
         
-        print(">>> [Main] Starting GAN Worker Process...")
-        self.gan_process = multiprocessing.Process(
-            target=gan_worker_loop,
-            args=(
-                self.gan_input_queue, 
-                self.gan_output_queue, 
-                "checkpoints/GAN_checkpoint/netG_epoch_40.pth", 
-                (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT)
-            )
-        )
-        self.gan_process.daemon = True
-        self.gan_process.start()
-        
-        self.pending_gan_request = False
+        if self.model_type == "GAN":
+            print(">>> [Main] Starting GAN Worker Process...")
+            checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_40.pth"
+            target_func = gan_worker_loop
+            target_args = (self.model_input_queue, self.model_output_queue, checkpoint_path, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
+        else:
+            print(">>> [Main] Starting SFD Worker Process...")
+            checkpoint_path = "checkpoints/SFD_checkpoints"
+            target_func = sfd_worker_loop
+            target_args = (self.model_input_queue, self.model_output_queue, checkpoint_path, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
 
+        self.worker_process = multiprocessing.Process(
+            target=target_func,
+            args=target_args
+        )
+        self.worker_process.daemon = True
+        self.worker_process.start()
+        
+        self.pending_model_request = False
         self.sampling_map_updated = False
-        self.gan_debug_surface = None
+        self.heuristic_debug_surface = None
 
     def create_heatmap_surface_from_data(self, flat_map):
         w, h = Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT
@@ -83,21 +89,21 @@ class Visualizer:
         heatmap_surf.set_alpha(150)
         return heatmap_surf
 
-    def check_gan_result(self):
+    def check_model_result(self):
         try:
-            flat_map = self.gan_output_queue.get_nowait()
-            self.gan_debug_surface = self.create_heatmap_surface_from_data(flat_map)
+            flat_map = self.model_output_queue.get_nowait()
+            self.heuristic_debug_surface = self.create_heatmap_surface_from_data(flat_map)
             if self.rrtx:
                 self.rrtx.update_sampling_distribution(flat_map, Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT)
                 self.rrtx.update_node_heuristics()
                 
-            print(">>> [Main] Received Heatmap from Worker!")
-            self.pending_gan_request = False
+            print(f">>> [Main] Received Heatmap from {self.model_type} Worker!")
+            self.pending_model_request = False
             self.sampling_map_updated = True
         except queue.Empty:
             pass
 
-    def get_gan_input_from_pygame(self):
+    def get_model_input_from_pygame(self):
         w, h = Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT
         map_surf = pygame.Surface((w, h))
         map_surf.fill((255, 255, 255)) 
@@ -130,38 +136,14 @@ class Visualizer:
         points_arr = points_arr.transpose(1, 0, 2)
         return map_arr, points_arr
     
-    def run_gan_inference_for_vis(self):
-        print(">>> Running GAN Inference for Visualization...")
-        map_img, points_img = self.get_gan_input_from_pygame()
-
-        # map_float = map_img.astype(float) / 255.0
-        # points_float = points_img.astype(float) / 255.0
-        # combined_img = points_float * map_float
-        # combined_uint8 = (combined_img * 255).astype(np.uint8)
-        # filename = "debug.png"
-        # cv2.imwrite(filename, cv2.cvtColor(combined_uint8, cv2.COLOR_RGB2BGR))
-        # print(f">>> Saved debug image to {filename}")
-        
-        heatmap_224 = self.gan_model.predict(map_img, points_img)
-        heatmap_full = cv2.resize(heatmap_224, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
-        
-        h, w = heatmap_full.shape
-        heatmap_color = np.zeros((h, w, 3), dtype=np.uint8)
-        
-        heatmap_uint8 = (heatmap_full * 255).astype(np.uint8)
-        heatmap_color[:, :, 1] = heatmap_uint8
-        heatmap_surf = pygame.surfarray.make_surface(heatmap_color.transpose(1, 0, 2))
-        heatmap_surf.set_alpha(150) 
-        return heatmap_surf
-
-    def update_gan_heuristic(self):
-        if self.pending_gan_request:
+    def update_model_heuristic(self):
+        if self.pending_model_request:
             return
 
-        map_img, points_img = self.get_gan_input_from_pygame()
-        self.gan_input_queue.put((map_img, points_img))
-        self.pending_gan_request = True
-        print(">>> [Main] Sent request to GAN Worker...")
+        map_img, points_img = self.get_model_input_from_pygame()
+        self.model_input_queue.put((map_img, points_img))
+        self.pending_model_request = True
+        print(f">>> [Main] Sent request to {self.model_type} Worker...")
 
     def create_borders(self):
         w, h = Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT
@@ -175,7 +157,7 @@ class Visualizer:
         print(">>> Initializing RRTx Algorithm...")
         self.model = HolonomicModel(self.obstacles)
         self.rrtx = RRTx(self.start_node, self.goal_node, self.model)
-        self.update_gan_heuristic()
+        self.update_model_heuristic()
         self.start_time = pygame.time.get_ticks()
 
     def is_point_inside_polygon(self, point, vertices):
@@ -229,17 +211,15 @@ class Visualizer:
                         if self.current_state == STATE_SETUP_OBSTACLES:
                             self.current_state = STATE_SET_START
                             print("Transition: Set Start Node")
-                        elif self.current_state == STATE_TEST_GAN:
+                        elif self.current_state == STATE_TEST_MODEL:
                             self.current_state = STATE_RUNNING
                             self.init_algorithm()
                             print("Transition: RRTx Running")
-                        elif self.current_state == STATE_RUNNING:
-                            pass
 
-                    if self.current_state == STATE_TEST_GAN:
+                    if self.current_state == STATE_TEST_MODEL:
                         if event.key == pygame.K_SPACE:
                             print(">>> Sending request to Visualize...")
-                            self.update_gan_heuristic()
+                            self.update_model_heuristic()
 
                     if self.current_state == STATE_RUNNING:
                         if event.key == pygame.K_t:
@@ -262,21 +242,21 @@ class Visualizer:
                     elif self.current_state == STATE_SET_GOAL:
                         if event.button == 1:
                             self.goal_node = Node(float(mx), float(my))
-                            self.current_state = STATE_TEST_GAN
-                            print(f"Goal set at: {mx}, {my}. Now in GAN TEST MODE. Press ENTER to Run RRTx.")
-                            self.update_gan_heuristic()
+                            self.current_state = STATE_TEST_MODEL
+                            print(f"Goal set at: {mx}, {my}. Now in {self.model_type} TEST MODE. Press ENTER to Run RRTx.")
+                            self.update_model_heuristic()
 
                     elif self.current_state == STATE_RUNNING:
                         self.handle_obstacle_click((mx, my), event.button == 1)
                     
-                    elif self.current_state == STATE_TEST_GAN:
+                    elif self.current_state == STATE_TEST_MODEL:
                         self.handle_obstacle_click((mx, my), event.button == 1)
-                        self.update_gan_heuristic()
+                        self.update_model_heuristic()
 
-            self.check_gan_result()
+            self.check_model_result()
             if self.current_state == STATE_RUNNING and self.rrtx:
                 if not self.sampling_map_updated:
-                    self.update_gan_heuristic()
+                    self.update_model_heuristic()
 
                 if not self.paused:
                     current_time = pygame.time.get_ticks()
@@ -293,8 +273,8 @@ class Visualizer:
                 pygame.draw.polygon(self.screen, COLOR_OBSTACLE, vertices)
                 pygame.draw.lines(self.screen, COLOR_OBSTACLE_BORDER, True, vertices, 2)
 
-            if self.current_state == STATE_TEST_GAN and self.gan_debug_surface:
-                self.screen.blit(self.gan_debug_surface, (0, 0))
+            if self.current_state == STATE_TEST_MODEL and self.heuristic_debug_surface:
+                self.screen.blit(self.heuristic_debug_surface, (0, 0))
 
             if self.start_node:
                 pygame.draw.circle(self.screen, COLOR_START, (int(self.start_node.pos[0]), int(self.start_node.pos[1])), 8)
@@ -332,8 +312,8 @@ class Visualizer:
             self.clock.tick(60)
 
         print(">>> Stopping Worker Process...")
-        self.gan_input_queue.put('STOP')
-        self.gan_process.join()
+        self.model_input_queue.put('STOP')
+        self.worker_process.join()
         pygame.quit()
         sys.exit()
 
@@ -353,8 +333,8 @@ class Visualizer:
             status_text = "MODE: SET GOAL"
             instruct_text = "[L-Click]: Place Goal"
         
-        elif self.current_state == STATE_TEST_GAN:
-            status_text = "MODE: GAN VISUALIZATION CHECK"
+        elif self.current_state == STATE_TEST_MODEL:
+            status_text = f"MODE: {self.model_type} VISUALIZATION CHECK"
             instruct_text = "[L-Click]: Move Obs | [SPACE]: Refresh | [ENTER]: Run RRTx"
 
         elif self.current_state == STATE_RUNNING:
@@ -372,5 +352,10 @@ class Visualizer:
         self.screen.blit(surf_instruct, (10, 35))
 
 if __name__ == "__main__":
-    viz = Visualizer()
+    parser = argparse.ArgumentParser(description="RRTx Path Planning Visualization with GAN/SFD Heuristic")
+    parser.add_argument("--model", type=str, choices=["gan", "sfd"], default="gan", 
+                        help="Choose the model to use for path heuristic: 'gan' or 'sfd'. Default is 'gan'.")
+    args = parser.parse_args()
+
+    viz = Visualizer(model_type=args.model)
     viz.run()
