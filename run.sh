@@ -2,7 +2,7 @@ set -e
 
 echo "Building C++..."
 
-cd build
+cd build_linux
 
 make -j4
 
