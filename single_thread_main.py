@@ -51,7 +51,7 @@ class Visualizer:
         self.paused = False
         self.start_time = 0
 
-        self.gan_model = GANInference("checkpoints/netG_epoch_40.pth")
+        self.gan_model = GANInference("checkpoints/GAN_checkpoint/netG_epoch_40.pth")
         self.sampling_map_updated = False
         self.gan_debug_surface = None
 

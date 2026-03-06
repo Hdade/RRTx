@@ -59,7 +59,7 @@ class Visualizer:
             args=(
                 self.gan_input_queue, 
                 self.gan_output_queue, 
-                "checkpoints/netG_epoch_40.pth", 
+                "checkpoints/GAN_checkpoint/netG_epoch_40.pth", 
                 (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT)
             )
         )
