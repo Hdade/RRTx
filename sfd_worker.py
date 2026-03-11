@@ -58,6 +58,23 @@ def compute_offline_ema(checkpoint_dir, start_ep, end_ep, sfd_steps, beta=0.9):
     print(f"{SUCCESS}[SFD Worker] successfully caculated EMA!{RESET}")
     return ema_state_dict
 
+def get_cached_ema_weights(checkpoint_dir, start_ep, end_ep, sfd_steps, beta=0.9):
+    cache_filename = f"cached_ema_sfd_{sfd_steps}steps_ep{start_ep}to{end_ep}_beta{beta}.pth"
+    cache_path = os.path.join(checkpoint_dir, cache_filename)
+
+    if os.path.exists(cache_path):
+        print(f"{SUCCESS}[SFD Worker] Found cached EMA weights at {cache_filename}. Loading directly...{RESET}")
+        return torch.load(cache_path, map_location='cpu', weights_only=True)
+    
+    print(f"{WARNING}[SFD Worker] Cached EMA not found. Proceeding to calculate offline...{RESET}")
+    ema_weights = compute_offline_ema(checkpoint_dir, start_ep, end_ep, sfd_steps, beta)
+    
+    if ema_weights is not None:
+        torch.save(ema_weights, cache_path)
+        print(f"{SUCCESS}[SFD Worker] Successfully saved cached EMA weights to {cache_filename} for future use!{RESET}")
+        
+    return ema_weights
+
 def sfd_worker_loop(input_queue, output_queue, checkpoint_dir, config_screen_dims, sfd_steps=4, ema_beta=0.85, img_size=128):
     torch.set_num_threads(multiprocessing.cpu_count())
     
@@ -73,7 +90,7 @@ def sfd_worker_loop(input_queue, output_queue, checkpoint_dir, config_screen_dim
     
     try:
         model = deepinv.models.DiffUNet(in_channels=7, out_channels=3, pretrained=None)
-        ema_weights = compute_offline_ema(checkpoint_dir, start_ep=1, end_ep=20, sfd_steps=sfd_steps, beta=ema_beta)
+        ema_weights = get_cached_ema_weights(checkpoint_dir, start_ep=1, end_ep=20, sfd_steps=sfd_steps, beta=ema_beta)
         if ema_weights is not None:
             model.load_state_dict(ema_weights)
         else:
