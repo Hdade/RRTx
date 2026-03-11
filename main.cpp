@@ -69,7 +69,6 @@ PYBIND11_MODULE(rrtx_cpp, m) {
         .def("step", &RRTx::step, py::arg("move_robot") = true)
         .def("shrinking_ball_radius", &RRTx::shrinkingBallRadius)
         .def("update_obstacles", &RRTx::updateObstacles)
-        .def("update_sampling_distribution", &RRTx::updateSamplingDistribution)
         .def("update_node_heuristics", &RRTx::updateNodeHeuristics)
         .def("obstacleHasChanged", &RRTx::obstacleHasChanged)
         .def("update_sampling_distribution", &RRTx::updateSamplingDistribution);
