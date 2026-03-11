@@ -51,6 +51,7 @@ class Visualizer:
         self.show_tree = True
         self.paused = False
         self.start_time = 0
+        self.use_heuristic = True
 
         self.model_input_queue = multiprocessing.Queue()
         self.model_output_queue = multiprocessing.Queue()
@@ -60,19 +61,26 @@ class Visualizer:
             checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_40.pth"
             target_func = gan_worker_loop
             target_args = (self.model_input_queue, self.model_output_queue, checkpoint_path, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
-        else:
+        elif self.model_type == "SFD":
             print(">>> [Main] Starting SFD Worker Process...")
             checkpoint_path = "checkpoints/SFD_checkpoints"
             target_func = sfd_worker_loop
             target_args = (self.model_input_queue, self.model_output_queue, checkpoint_path, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
+        else:
+            self.use_heuristic = False
+            self.model_input_queue = None
+            self.model_output_queue = None
 
-        self.worker_process = multiprocessing.Process(
-            target=target_func,
-            args=target_args
-        )
-        self.worker_process.daemon = True
-        self.worker_process.start()
-        
+        if self.use_heuristic:
+            self.worker_process = multiprocessing.Process(
+                target=target_func,
+                args=target_args
+            )
+            self.worker_process.daemon = True
+            self.worker_process.start()
+        else:
+            self.worker_process = None
+            
         self.pending_model_request = False
         self.sampling_map_updated = False
         self.heuristic_debug_surface = None
@@ -90,6 +98,9 @@ class Visualizer:
         return heatmap_surf
 
     def check_model_result(self):
+        if not self.use_heuristic:
+            return
+
         try:
             flat_map = self.model_output_queue.get_nowait()
             self.heuristic_debug_surface = self.create_heatmap_surface_from_data(flat_map)
@@ -137,7 +148,7 @@ class Visualizer:
         return map_arr, points_arr
     
     def update_model_heuristic(self):
-        if self.pending_model_request:
+        if not self.use_heuristic or self.pending_model_request:
             return
 
         map_img, points_img = self.get_model_input_from_pygame()
@@ -312,8 +323,9 @@ class Visualizer:
             self.clock.tick(60)
 
         print(">>> Stopping Worker Process...")
-        self.model_input_queue.put('STOP')
-        self.worker_process.join()
+        if self.use_heuristic:
+            self.model_input_queue.put('STOP')
+            self.worker_process.join()
         pygame.quit()
         sys.exit()
 
@@ -353,7 +365,7 @@ class Visualizer:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="RRTx Path Planning Visualization with GAN/SFD Heuristic")
-    parser.add_argument("--model", type=str, choices=["gan", "sfd"], default="gan", 
+    parser.add_argument("--model", type=str, choices=["gan", "sfd", "none"], default="none", 
                         help="Choose the model to use for path heuristic: 'gan' or 'sfd'. Default is 'gan'.")
     args = parser.parse_args()
 

@@ -67,7 +67,7 @@ void RRTx::updateNodeHeuristics() {
 
 double RRTx::getHeuristicProbability(double x, double y) {
     if(heuristic_map.empty()) {
-        return 1.0;
+        return 0.0;
     }
 
     int px = static_cast<int>(x); 
