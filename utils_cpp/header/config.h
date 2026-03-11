@@ -13,6 +13,7 @@ namespace config {
     static constexpr double EPSILON = 0.1;
     static constexpr double GAMMA = 5000.0;
     static constexpr double GOAL_RADIUS = 20.0;
+    static constexpr double HEURISTIC_RATIO = 0.85;
 
     // Map Dimensions
     static constexpr double X_DIM = static_cast<double>(SCREEN_WIDTH);
