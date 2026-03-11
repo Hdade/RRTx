@@ -81,13 +81,15 @@ double RRTx::getHeuristicProbability(double x, double y) {
 
 Node* RRTx::randomNode() {
     std::uniform_real_distribution<double> coin_flip(0.0, 1.0);
-    if(!heuristic_map.empty() && coin_flip(gen) < 0.6) {
+    if(!heuristic_map.empty() && coin_flip(gen) < 0.85) {
         for(int i = 0; i < 100; ++i) {
             double rx = dis_x(gen);
             double ry = dis_y(gen);
             double prob = getHeuristicProbability(rx, ry);
             if(prob > coin_flip(gen)) {
-                return new Node(rx, ry);
+                Node* newNode = new Node(rx, ry);
+                newNode->heuristic_val = getHeuristicProbability(rx, ry);
+                return newNode;
             }
         }
     }
