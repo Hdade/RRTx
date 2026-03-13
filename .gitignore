@@ -5,3 +5,4 @@ build/
 build_linux/
 __pycache__/
 checkpoints/
+./rrtx_cpp.cpython-313-x86_64-linux-gnu.so

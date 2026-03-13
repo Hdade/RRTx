@@ -1,0 +1,53 @@
+{
+  "scenario_name": "Test_Map_01",
+  "start": [100.0, 100.0],
+  "goal": [400.0, 400.0],
+  "obstacles": [
+    {
+      "id": "obs_static_rect",
+      "type": "static",
+      "shape": "rectangle",
+      "position": [300.0, 400.0],
+      "width": 120.0,
+      "height": 60.0,
+      "rotation": 45.0
+    },
+    {
+      "id": "obs_static_square",
+      "type": "static",
+      "shape": "square",
+      "position": [500.0, 200.0],
+      "size": 80.0,
+      "rotation": 0.0
+    },
+    {
+      "id": "obs_dynamic_circle",
+      "type": "dynamic",
+      "shape": "circle",
+      "center": [700.0, 300.0],
+      "radius": 50.0,
+      "velocity": [3.0, -2.0],
+      "movement_bounds": {
+        "x_min": 500,
+        "x_max": 900,
+        "y_min": 100,
+        "y_max": 500
+      }
+    },
+    {
+      "id": "obs_dynamic_square",
+      "type": "dynamic",
+      "shape": "square",
+      "position": [200.0, 600.0],
+      "size": 70.0,
+      "rotation": 15.0,
+      "velocity": [0.0, 4.0],
+      "movement_bounds": {
+        "x_min": 100,
+        "x_max": 300,
+        "y_min": 200,
+        "y_max": 700
+      }
+    }
+  ]
+}

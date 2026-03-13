@@ -38,7 +38,9 @@ PYBIND11_MODULE(rrtx_cpp, m) {
     py::class_<Obstacle, std::shared_ptr<Obstacle>>(m, "Obstacle");
 
     py::class_<Circle, Obstacle, std::shared_ptr<Circle>>(m, "Circle")
-        .def(py::init<double, double, double>());
+        .def(py::init<double, double, double>())
+        .def_readwrite("center", &Circle::center)
+        .def_readwrite("r", &Circle::r);
 
     py::class_<Rectangle, Obstacle, std::shared_ptr<Rectangle>>(m, "Rectangle")
         .def(py::init<double, double, double, double, double>())
