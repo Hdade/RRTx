@@ -81,7 +81,7 @@ double RRTx::getHeuristicProbability(double x, double y) {
 
 Node* RRTx::randomNode() {
     std::uniform_real_distribution<double> coin_flip(0.0, 1.0);
-    if(!heuristic_map.empty() && coin_flip(gen) < 0.85) {
+    if(!heuristic_map.empty() && coin_flip(gen) < config::HEURISTIC_RATIO) {
         for(int i = 0; i < 100; ++i) {
             double rx = dis_x(gen);
             double ry = dis_y(gen);
