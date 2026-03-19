@@ -1,76 +1,94 @@
 #include "RRTx.h"
 
-double RRTx::unitBallVolume(int d) {
-    if(d == 2) {
+double RRTx::unitBallVolume(int d)
+{
+    if (d == 2)
+    {
         return M_PI;
     }
 
-    if(d == 3) {
+    if (d == 3)
+    {
         return 4.0 * M_PI / 3.0;
     }
-    
+
     return std::pow(M_PI, d / 2.0) / std::tgamma(d / 2.0 + 1);
 }
 
-double RRTx::shrinkingBallRadius() {
+double RRTx::shrinkingBallRadius()
+{
     double card_V = static_cast<double>(V.size());
-    if(card_V <= 1) {
+    if (card_V <= 1)
+    {
         return config::DELTA;
     }
-    
+
     double zeta_D = unitBallVolume(config::DIMENSION);
     double term1 = (config::GAMMA / zeta_D) * (std::log(card_V) / card_V);
     double r = std::pow(term1, 1.0 / config::DIMENSION);
-    
+
     return std::max(r, config::DELTA * 1.5);
 }
 
-std::pair<double, double> RRTx::calculateKey(Node* v) {
+std::pair<double, double> RRTx::calculateKey(Node *v)
+{
     // Key: (min(v.g, v.lmc), v.g)
     return {std::min(v->g, v->lmc), v->g};
 }
 
-double RRTx::d(Node* u, Node* v) {
+double RRTx::d(Node *u, Node *v)
+{
     return model->distance(u, v);
 }
 
-bool RRTx::isCollision(Node* u, Node* v) {
+bool RRTx::isCollision(Node *u, Node *v)
+{
     return model->checkCollision(u, v);
 }
 
-bool RRTx::isInsideObstacle(Node* v) {
-    for(const auto& obs : Obstacles) {
-        if(obs->isInside(v->pos)) {
+bool RRTx::isInsideObstacle(Node *v)
+{
+    for (const auto &obs : Obstacles)
+    {
+        if (obs->isInside(v->pos))
+        {
             return true;
         }
     }
     return false;
 }
 
-bool RRTx::isSegmentInObstacle(const Vec2D& v_pos, const Vec2D& u_pos, Obstacle* o) {
+bool RRTx::isSegmentInObstacle(const Vec2D &v_pos, const Vec2D &u_pos, Obstacle *o)
+{
     return o->intersectSegment(v_pos, u_pos);
 }
 
-void RRTx::updateSamplingDistribution(const std::vector<double>& flat_map, int width, int height) {
+void RRTx::updateSamplingDistribution(const std::vector<double> &flat_map, int width, int height)
+{
     this->heuristic_map = flat_map;
     this->map_width = width;
     this->map_height = height;
 }
 
-void RRTx::updateNodeHeuristics() {
-    if(heuristic_map.empty()) return;
+void RRTx::updateNodeHeuristics()
+{
+    if (heuristic_map.empty())
+        return;
 
-    for(Node* v : V) {
+    for (Node *v : V)
+    {
         v->heuristic_val = getHeuristicProbability(v->pos.x, v->pos.y);
     }
 }
 
-double RRTx::getHeuristicProbability(double x, double y) {
-    if(heuristic_map.empty()) {
+double RRTx::getHeuristicProbability(double x, double y)
+{
+    if (heuristic_map.empty())
+    {
         return 0.0;
     }
 
-    int px = static_cast<int>(x); 
+    int px = static_cast<int>(x);
     int py = static_cast<int>(y);
     px = (px < 0) ? 0 : px;
     px = (px >= map_width) ? map_width - 1 : px;
@@ -79,15 +97,19 @@ double RRTx::getHeuristicProbability(double x, double y) {
     return heuristic_map[py * map_width + px];
 }
 
-Node* RRTx::randomNode() {
+Node *RRTx::randomNode()
+{
     std::uniform_real_distribution<double> coin_flip(0.0, 1.0);
-    if(!heuristic_map.empty() && coin_flip(gen) < config::HEURISTIC_RATIO) {
-        for(int i = 0; i < 100; ++i) {
+    if (!heuristic_map.empty() && coin_flip(gen) < config::HEURISTIC_RATIO)
+    {
+        for (int i = 0; i < 100; ++i)
+        {
             double rx = dis_x(gen);
             double ry = dis_y(gen);
             double prob = getHeuristicProbability(rx, ry);
-            if(prob > coin_flip(gen)) {
-                Node* newNode = new Node(rx, ry);
+            if (prob > coin_flip(gen))
+            {
+                Node *newNode = new Node(rx, ry);
                 newNode->heuristic_val = getHeuristicProbability(rx, ry);
                 return newNode;
             }
@@ -96,198 +118,245 @@ Node* RRTx::randomNode() {
 
     double rx = dis_x(gen);
     double ry = dis_y(gen);
-    Node* newNode = new Node(rx, ry);
+    Node *newNode = new Node(rx, ry);
     newNode->heuristic_val = getHeuristicProbability(rx, ry);
     return newNode;
 }
 
-Node* RRTx::nearestNode(Node* v) {
-    if(V.empty()) return nullptr;
-    
+Node *RRTx::nearestNode(Node *v)
+{
+    if (V.empty())
+        return nullptr;
+
     double search_radius = config::DELTA * 2.0;
-    std::vector<Node*> candidates = spatial_grid->getNeighbors(v->pos, search_radius);
-    if(candidates.empty()) {
+    std::vector<Node *> candidates = spatial_grid->getNeighbors(v->pos, search_radius);
+    if (candidates.empty())
+    {
         candidates = V;
     }
-    
-    Node* nearest_v = nullptr;
+
+    Node *nearest_v = nullptr;
     double minDist = std::numeric_limits<double>::infinity();
-    for(Node* u : candidates) {
-        if(u->lmc >= std::numeric_limits<double>::infinity()) {
+    for (Node *u : candidates)
+    {
+        if (u->lmc >= std::numeric_limits<double>::infinity())
+        {
             continue;
         }
 
         double dist = d(u, v);
-        if(dist < minDist) {
+        if (dist < minDist)
+        {
             minDist = dist;
             nearest_v = u;
         }
     }
-    
+
     return nearest_v;
 }
 
-std::vector<Node*> RRTx::near(Node* v, double r) {
-    std::vector<Node*> V_near;
-    std::vector<Node*> candidates = spatial_grid->getNeighbors(v->pos, r);
-    for(Node* u : candidates) {
-        if(d(u, v) <= r) {
+std::vector<Node *> RRTx::near(Node *v, double r)
+{
+    std::vector<Node *> V_near;
+    std::vector<Node *> candidates = spatial_grid->getNeighbors(v->pos, r);
+    for (Node *u : candidates)
+    {
+        if (d(u, v) <= r)
+        {
             V_near.push_back(u);
         }
     }
-    
+
     return V_near;
 }
 
-Node* RRTx::saturate(Node* v, Node* v_nearest) {
+Node *RRTx::saturate(Node *v, Node *v_nearest)
+{
     Vec2D newPos = model->steer(v_nearest, v, config::DELTA);
-    Node* newNode = new Node(newPos.x, newPos.y);
+    Node *newNode = new Node(newPos.x, newPos.y);
     newNode->heuristic_val = getHeuristicProbability(newPos.x, newPos.y);
     return newNode;
 }
 
-void RRTx::makeParentOf(Node* v, Node* u) {
-    if(v->parent == u) return;
+void RRTx::makeParentOf(Node *v, Node *u)
+{
+    if (v->parent == u)
+        return;
 
-    if(v->parent != nullptr) {
-        auto& siblings = v->parent->children;
+    if (v->parent != nullptr)
+    {
+        auto &siblings = v->parent->children;
         siblings.erase(std::remove(siblings.begin(), siblings.end(), v), siblings.end());
     }
-    
+
     v->parent = u;
-    if(u != nullptr) {
+    if (u != nullptr)
+    {
         u->children.push_back(v);
     }
 }
 
-void RRTx::findParent(Node* v, const std::vector<Node*>& U, double r) {
-    makeParentOf(v, nullptr); 
+void RRTx::findParent(Node *v, const std::vector<Node *> &U, double r)
+{
+    makeParentOf(v, nullptr);
     v->lmc = std::numeric_limits<double>::infinity();
-    for(Node* u : U) {
+    for (Node *u : U)
+    {
         double dist_v_u = d(v, u);
-        if(dist_v_u > r || isCollision(v, u)) continue;
+        if (dist_v_u > r || isCollision(v, u))
+            continue;
         double potential_lmc = dist_v_u + u->lmc;
-        if(v->lmc > potential_lmc) {
+        if (v->lmc > potential_lmc)
+        {
             v->lmc = potential_lmc;
             makeParentOf(v, u);
         }
     }
 }
 
-void RRTx::verifyQueue(Node* v) {
-    if(Q.contains(v)) {
+void RRTx::verifyQueue(Node *v)
+{
+    if (Q.contains(v))
+    {
         Q.update(v);
-    } else {
+    }
+    else
+    {
         Q.insert(v);
     }
 }
 
-void RRTx::reduceInconsistency(double r) {
-    while(!Q.empty()) {
-        Node* v_top = Q.top();
+void RRTx::reduceInconsistency(double r)
+{
+    while (!Q.empty())
+    {
+        Node *v_top = Q.top();
         auto key_top = calculateKey(v_top);
         auto key_bot = calculateKey(v_bot);
-        
-        bool isRobotConsistent = (
-            (v_bot->lmc == v_bot->g) &&
-            (v_bot->g != std::numeric_limits<double>::infinity()) &&
-            (!Q.contains(v_bot))
-        );
 
-        if(key_top >= key_bot && isRobotConsistent) {
+        bool isRobotConsistent = ((v_bot->lmc == v_bot->g) &&
+                                  (v_bot->g != std::numeric_limits<double>::infinity()) &&
+                                  (!Q.contains(v_bot)));
+
+        if (key_top >= key_bot && isRobotConsistent)
+        {
             break;
         }
-        
-        Node* v = Q.pop(); 
-        if(v->g - v->lmc > config::EPSILON) {
+
+        Node *v = Q.pop();
+        if (v->g - v->lmc > config::EPSILON)
+        {
             updateLMC(v);
             rewireNeighbors(v, r);
         }
-        
+
         v->g = v->lmc;
     }
 }
-void RRTx::verifyOrphan(Node* v) {
-    if(Q.contains(v)) {
+void RRTx::verifyOrphan(Node *v)
+{
+    if (Q.contains(v))
+    {
         Q.remove(v);
     }
     Orphans.insert(v);
 }
 
-void RRTx::propagateDescendants() {
-    std::vector<Node*> stack(Orphans.begin(), Orphans.end());
+void RRTx::propagateDescendants()
+{
+    std::vector<Node *> stack(Orphans.begin(), Orphans.end());
     // std::cout << "Propagating... Initial Orphans: " << stack.size() << std::endl;
-    while(!stack.empty()) {
-        Node* v = stack.back();
+    while (!stack.empty())
+    {
+        Node *v = stack.back();
         stack.pop_back();
         // if(v->children.size() > 0) {
         //     std::cout << "Node at (" << v->pos.x << ") propagate to " << v->children.size() << " children." << std::endl;
         // }
-        for(Node* child : v->children) {
-            if(Orphans.find(child) == Orphans.end()) {
+        for (Node *child : v->children)
+        {
+            if (Orphans.find(child) == Orphans.end())
+            {
                 Orphans.insert(child);
                 stack.push_back(child);
             }
         }
     }
-    
-    for(Node* v : Orphans) {
-        std::vector<Node*> neighborsToWarn = v->N0_out;
+
+    for (Node *v : Orphans)
+    {
+        std::vector<Node *> neighborsToWarn = v->N0_out;
         neighborsToWarn.insert(neighborsToWarn.end(), v->Nr_out.begin(), v->Nr_out.end());
-        if(v->parent != nullptr) {
+        if (v->parent != nullptr)
+        {
             neighborsToWarn.push_back(v->parent);
         }
-        
-        for(Node* u : neighborsToWarn) {
-            if(Orphans.find(u) == Orphans.end()) {
+
+        for (Node *u : neighborsToWarn)
+        {
+            if (Orphans.find(u) == Orphans.end())
+            {
                 u->g = std::numeric_limits<double>::infinity();
                 verifyQueue(u);
             }
         }
     }
-    
-    for(Node* v : Orphans) {
+
+    for (Node *v : Orphans)
+    {
         v->g = std::numeric_limits<double>::infinity();
         v->lmc = std::numeric_limits<double>::infinity();
-        if(v->parent != nullptr) {
-            auto& siblings = v->parent->children;
+        if (v->parent != nullptr)
+        {
+            auto &siblings = v->parent->children;
             siblings.erase(std::remove(siblings.begin(), siblings.end(), v), siblings.end());
             v->parent = nullptr;
         }
     }
-    
+
     Orphans.clear();
 }
 
-void RRTx::cullNeighbors(Node* v, double r) {
+void RRTx::cullNeighbors(Node *v, double r)
+{
     auto it = v->Nr_out.begin();
-    while(it != v->Nr_out.end()) {
-        Node* u = *it;
-        if(d(v, u) > r && v->parent != u) {
+    while (it != v->Nr_out.end())
+    {
+        Node *u = *it;
+        if (d(v, u) > r && v->parent != u)
+        {
             it = v->Nr_out.erase(it);
-            auto& u_Nr_in = u->Nr_in;
+            auto &u_Nr_in = u->Nr_in;
             u_Nr_in.erase(std::remove(u_Nr_in.begin(), u_Nr_in.end(), v), u_Nr_in.end());
-        } else {
+        }
+        else
+        {
             ++it;
         }
     }
 }
 
-void RRTx::rewireNeighbors(Node* v, double r) {
-    if(v->g - v->lmc > config::EPSILON) {
+void RRTx::rewireNeighbors(Node *v, double r)
+{
+    if (v->g - v->lmc > config::EPSILON)
+    {
         cullNeighbors(v, r);
-        std::vector<Node*> N_v_in = v->N0_in;
+        std::vector<Node *> N_v_in = v->N0_in;
         N_v_in.insert(N_v_in.end(), v->Nr_in.begin(), v->Nr_in.end());
-        for(Node* u : N_v_in) {
-            if(u == v->parent || isCollision(u, v)) {
+        for (Node *u : N_v_in)
+        {
+            if (u == v->parent || isCollision(u, v))
+            {
                 continue;
             }
 
             double dist = d(u, v);
-            if(u->lmc > dist + v->lmc) {
+            if (u->lmc > dist + v->lmc)
+            {
                 u->lmc = dist + v->lmc;
                 makeParentOf(u, v);
-                if(u->g - u->lmc > config::EPSILON) {
+                if (u->g - u->lmc > config::EPSILON)
+                {
                     verifyQueue(u);
                 }
             }
@@ -295,111 +364,143 @@ void RRTx::rewireNeighbors(Node* v, double r) {
     }
 }
 
-void RRTx::updateLMC(Node* v) {
+void RRTx::updateLMC(Node *v)
+{
     double r = shrinkingBallRadius();
     cullNeighbors(v, r);
-    
+
     v->lmc = std::numeric_limits<double>::infinity();
-    Node* best_parent = nullptr;
-    std::vector<Node*> potential_parents = v->N0_out;
+    Node *best_parent = nullptr;
+    std::vector<Node *> potential_parents = v->N0_out;
     potential_parents.insert(potential_parents.end(), v->Nr_out.begin(), v->Nr_out.end());
-    for(Node* u : potential_parents) {
-        if(Orphans.find(u) != Orphans.end() || u->parent == v || isCollision(v, u)) {
+    for (Node *u : potential_parents)
+    {
+        if (Orphans.find(u) != Orphans.end() || u->parent == v || isCollision(v, u))
+        {
             continue;
         }
-        
+
         double dist_v_u = d(v, u);
         double new_cost = dist_v_u + u->lmc;
-        if(new_cost < v->lmc) {
+        if (new_cost < v->lmc)
+        {
             v->lmc = new_cost;
             best_parent = u;
         }
     }
-    
+
     makeParentOf(v, best_parent);
 }
 
-void RRTx::removeObstacle(Obstacle* o) {
+void RRTx::removeObstacle(Obstacle *o)
+{
     auto it = std::remove(Obstacles.begin(), Obstacles.end(), o);
-    if(it != Obstacles.end()) {
+    if (it != Obstacles.end())
+    {
         Obstacles.erase(it, Obstacles.end());
     }
-    
-    std::vector<Node*> nodes2Update;
-    for(Node* v : V) {
-        std::vector<Node*> neighbors = v->N0_out;
+
+    std::vector<Node *> nodes2Update;
+    for (Node *v : V)
+    {
+        std::vector<Node *> neighbors = v->N0_out;
         neighbors.insert(neighbors.end(), v->Nr_out.begin(), v->Nr_out.end());
-        for(Node* u : neighbors) {
-            if(isSegmentInObstacle(v->pos, u->pos, o) && !isCollision(v, u)) {
+        for (Node *u : neighbors)
+        {
+            if (isSegmentInObstacle(v->pos, u->pos, o) && !isCollision(v, u))
+            {
                 nodes2Update.push_back(v);
                 break;
             }
         }
     }
-    
-    for(Node* v : nodes2Update) {
+
+    for (Node *v : nodes2Update)
+    {
         updateLMC(v);
-        if(v->lmc != v->g) {
+        if (v->lmc != v->g)
+        {
             verifyQueue(v);
         }
     }
 }
 
-void RRTx::addNewObstacle(Obstacle* o) {
+void RRTx::addNewObstacle(Obstacle *o)
+{
     Obstacles.push_back(o);
-    for(Node* v : V) {
-        std::vector<Node*> neighbors = v->N0_out;
+    for (Node *v : V)
+    {
+        std::vector<Node *> neighbors = v->N0_out;
         neighbors.insert(neighbors.end(), v->Nr_out.begin(), v->Nr_out.end());
-        for(Node* u : neighbors) {
-            if(isSegmentInObstacle(v->pos, u->pos, o) && v->parent == u) {
+        for (Node *u : neighbors)
+        {
+            if (isSegmentInObstacle(v->pos, u->pos, o) && v->parent == u)
+            {
                 verifyOrphan(v);
             }
         }
     }
 }
 
-void RRTx::updateObstacles(double r, const std::vector<Obstacle*>& newObstacles) {
-    std::vector<Obstacle*> vanished;
-    for(Obstacle* o : Obstacles) {
+void RRTx::updateObstacles(double r, const std::vector<Obstacle *> &newObstacles)
+{
+    std::vector<Obstacle *> vanished;
+    for (Obstacle *o : Obstacles)
+    {
         bool found = false;
-        for(Obstacle* new_o : newObstacles) {
-            if(o == new_o) {
+        for (Obstacle *new_o : newObstacles)
+        {
+            if (o == new_o)
+            {
                 found = true;
                 break;
             }
         }
 
-        if(!found) {
+        if (!found)
+        {
             vanished.push_back(o);
         }
     }
-    
-    if(!vanished.empty()) {
-        for(Obstacle* o : vanished) {
+
+    if (!vanished.empty())
+    {
+        for (Obstacle *o : vanished)
+        {
             removeObstacle(o);
         }
-        
+
         model->obstacles = this->Obstacles;
         reduceInconsistency(r);
     }
-    
-    std::vector<Obstacle*> appeared;
-    for(Obstacle* new_o : newObstacles) {
+
+    std::vector<Obstacle *> appeared;
+    for (Obstacle *new_o : newObstacles)
+    {
         bool found = false;
-        for(Obstacle* o : Obstacles) {
-            if(o == new_o) {
+        if (new_o->active == false)
+        {
+            continue; // Skip inactive obstacles
+        }
+        for (Obstacle *o : Obstacles)
+        {
+            if (o == new_o)
+            {
                 found = true;
                 break;
             }
         }
 
-        if(!found) {
+        if (!found)
+        {
             appeared.push_back(new_o);
         }
     }
-    
-    if(!appeared.empty()) {
-        for(Obstacle* o : appeared) {
+
+    if (!appeared.empty())
+    {
+        for (Obstacle *o : appeared)
+        {
             addNewObstacle(o);
         }
         model->obstacles = this->Obstacles;
@@ -410,26 +511,33 @@ void RRTx::updateObstacles(double r, const std::vector<Obstacle*>& newObstacles)
     }
 }
 
-std::vector<Obstacle*> RRTx::getSensorData() {
+std::vector<Obstacle *> RRTx::getSensorData()
+{
     return model->obstacles;
 }
 
-bool RRTx::obstacleHasChanged() {
-    std::vector<Obstacle*> current = getSensorData();
-    if(Obstacles.size() != current.size()) {
+bool RRTx::obstacleHasChanged()
+{
+    std::vector<Obstacle *> current = getSensorData();
+    if (Obstacles.size() != current.size())
+    {
         return true;
     }
-    
-    for(Obstacle* o : Obstacles) {
+
+    for (Obstacle *o : Obstacles)
+    {
         bool found = false;
-        for(Obstacle* cur_o : current) {
-            if(o == cur_o) {
+        for (Obstacle *cur_o : current)
+        {
+            if (o == cur_o)
+            {
                 found = true;
                 break;
             }
         }
 
-        if(!found) {
+        if (!found)
+        {
             return true;
         }
     }
@@ -437,82 +545,103 @@ bool RRTx::obstacleHasChanged() {
     return false;
 }
 
-Node* RRTx::updateRobot() {
-    if(v_bot == v_goal) {
+Node *RRTx::updateRobot()
+{
+    if (v_bot == v_goal)
+    {
         return v_bot;
     }
-    
+
     double dist_to_goal = d(v_bot, v_goal);
-    if(dist_to_goal <= config::GOAL_RADIUS) {
-        if(!isCollision(v_bot, v_goal)) {
+    if (dist_to_goal <= config::GOAL_RADIUS)
+    {
+        if (!isCollision(v_bot, v_goal))
+        {
             std::cout << ">>> SNAP! Successfully reach to GOAL!" << std::endl;
             return v_goal;
         }
     }
-    
+
     return (v_bot->parent == nullptr) ? v_bot : v_bot->parent;
 }
 
-void RRTx::run() {
-    while(v_bot != v_goal) {
+void RRTx::run()
+{
+    while (v_bot != v_goal)
+    {
         step(true);
-        if(V.size() > config::MAX_ITER) {
+        if (V.size() > config::MAX_ITER)
+        {
             break;
         }
     }
 }
 
-bool RRTx::step(bool move_robot) {
-    if(v_bot == v_goal) {
+bool RRTx::step(bool move_robot)
+{
+    if (v_bot == v_goal)
+    {
         return true;
     }
-    
+
     double r = shrinkingBallRadius();
-    if(obstacleHasChanged()) {
-        std::vector<Obstacle*> currentVisibleObstacle = getSensorData();
+    if (obstacleHasChanged())
+    {
+        std::vector<Obstacle *> currentVisibleObstacle = getSensorData();
         updateObstacles(r, currentVisibleObstacle);
     }
-    
-    if(move_robot && v_bot->lmc < std::numeric_limits<double>::infinity() && v_bot != v_goal) {
+
+    if (move_robot && v_bot->lmc < std::numeric_limits<double>::infinity() && v_bot != v_goal)
+    {
         v_bot = updateRobot();
     }
-    
-    const int SAMPLES_PER_FRAME = 50; 
-    for(int i = 0; i < SAMPLES_PER_FRAME; ++i) {
-        Node* v = randomNode();
-        Node* v_nearest = nearestNode(v);
-        if(v_nearest == nullptr) {
+
+    const int SAMPLES_PER_FRAME = 50;
+    for (int i = 0; i < SAMPLES_PER_FRAME; ++i)
+    {
+        Node *v = randomNode();
+        Node *v_nearest = nearestNode(v);
+        if (v_nearest == nullptr)
+        {
             delete v;
             continue;
         }
-        
-        if(d(v, v_nearest) > config::DELTA) {
-            Node* v_saturated = saturate(v, v_nearest);
+
+        if (d(v, v_nearest) > config::DELTA)
+        {
+            Node *v_saturated = saturate(v, v_nearest);
             delete v;
             v = v_saturated;
         }
-        
-        if(!isInsideObstacle(v)) {
+
+        if (!isInsideObstacle(v))
+        {
             extend(v, r);
-            if(std::find(V.begin(), V.end(), v) != V.end()) {
+            if (std::find(V.begin(), V.end(), v) != V.end())
+            {
                 rewireNeighbors(v, r);
                 reduceInconsistency(r);
             }
-        } else {
+        }
+        else
+        {
             delete v;
         }
     }
-    
+
     v_bot->parent = nullptr;
     v_bot->lmc = std::numeric_limits<double>::infinity();
-    std::vector<Node*> potential_parents = near(v_bot, r);
-    if(!potential_parents.empty()) {
+    std::vector<Node *> potential_parents = near(v_bot, r);
+    if (!potential_parents.empty())
+    {
         findParent(v_bot, potential_parents, r);
     }
 
-    if(v_bot->lmc >= std::numeric_limits<double>::infinity()) {
+    if (v_bot->lmc >= std::numeric_limits<double>::infinity())
+    {
         potential_parents = near(v_bot, config::DELTA);
-        if(!potential_parents.empty()) {
+        if (!potential_parents.empty())
+        {
             findParent(v_bot, potential_parents, config::DELTA);
         }
     }
@@ -520,22 +649,27 @@ bool RRTx::step(bool move_robot) {
     return false;
 }
 
-void RRTx::extend(Node* v, double r) {
-    std::vector<Node*> V_near = near(v, r);
+void RRTx::extend(Node *v, double r)
+{
+    std::vector<Node *> V_near = near(v, r);
     findParent(v, V_near, r);
-    if(v->parent == nullptr) {
-        return; 
+    if (v->parent == nullptr)
+    {
+        return;
     }
-    
+
     V.push_back(v);
     spatial_grid->add(v);
-    for(Node* u : V_near) {
-        if(!isCollision(v, u)) {
+    for (Node *u : V_near)
+    {
+        if (!isCollision(v, u))
+        {
             v->N0_out.push_back(u);
             u->Nr_in.push_back(v);
         }
-        
-        if(!isCollision(u, v)) {
+
+        if (!isCollision(u, v))
+        {
             u->Nr_out.push_back(v);
             v->N0_in.push_back(u);
         }

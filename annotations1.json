@@ -1,0 +1,29 @@
+{
+  "scenario_name": "Map_with_Wrongly_Placed_Obstacles",
+  "start": [100.0, 100.0],
+  "goal": [400.0, 400.0],
+  "obstacles": [
+    { "id": "obs_top_1", "type": "static", "shape": "square", "position": [50.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_2", "type": "static", "shape": "square", "position": [120.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_3", "type": "static", "shape": "square", "position": [190.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_4", "type": "static", "shape": "square", "position": [260.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_5", "type": "static", "shape": "square", "position": [330.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_6", "type": "proximity", "shape": "square", "position": [400.0, 150.0], "size": 80.0, "rotation": 0.0 , "trigger_dist": 100.0, "behavior": "disappear_when_near"},
+    { "id": "obs_top_7", "type": "proximity", "shape": "square", "position": [470.0, 150.0], "size": 80.0, "rotation": 0.0 , "trigger_dist": 100.0, "behavior": "disappear_when_near"},
+    { "id": "obs_top_8", "type": "static", "shape": "square", "position": [540.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_9", "type": "static", "shape": "square", "position": [610.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    
+    { "id": "obs_left_pillar_1", "type": "static", "shape": "square", "position": [300.0, 550.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_right_pillar_1", "type": "static", "shape": "square", "position": [500.0, 550.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_right_pillar_2", "type": "static", "shape": "square", "position": [500.0, 480.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_right_pillar_3", "type": "static", "shape": "square", "position": [500.0, 410.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_left_pillar_4", "type": "static", "shape": "square", "position": [300.0, 340.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_right_pillar_4", "type": "static", "shape": "square", "position": [500.0, 340.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_left_pillar_5", "type": "static", "shape": "square", "position": [300.0, 340.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_right_pillar_5", "type": "static", "shape": "square", "position": [500.0, 340.0], "size": 80.0, "rotation": 0.0 },
+    
+    {"id": "obs_proximity_1", "type": "proximity", "shape": "square", "position": [350.0, 300.0], "size": 80.0, "trigger_dist": 100.0, "behavior": "appear_when_near"},
+    {"id": "obs_proximity_2", "type": "proximity", "shape": "square", "position": [450.0, 300.0], "size": 80.0, "trigger_dist": 100.0, "behavior": "appear_when_near"},
+    {"id": "obs_proximity_3", "type": "proximity", "shape": "square", "position": [400.0, 300.0], "size": 80.0, "trigger_dist": 100.0, "behavior": "appear_when_near"}
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "scenario_name": "Test_Map_01",
+  "scenario_name": "Map_with_Moving_Obstacles",
   "start": [100.0, 100.0],
   "goal": [400.0, 400.0],
   "obstacles": [
@@ -48,6 +48,18 @@
         "y_min": 200,
         "y_max": 700
       }
-    }
+    },
+    { "id": "obs_top_1", "type": "static", "shape": "square", "position": [50.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_2", "type": "static", "shape": "square", "position": [120.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_3", "type": "static", "shape": "square", "position": [190.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_4", "type": "static", "shape": "square", "position": [260.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_5", "type": "static", "shape": "square", "position": [330.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_6", "type": "static", "shape": "square", "position": [400.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_7", "type": "static", "shape": "square", "position": [470.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_8", "type": "static", "shape": "square", "position": [540.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_top_9", "type": "static", "shape": "square", "position": [610.0, 150.0], "size": 80.0, "rotation": 0.0 },
+    
+    { "id": "obs_left_pillar_1", "type": "static", "shape": "square", "position": [330.0, 550.0], "size": 80.0, "rotation": 0.0 },
+    { "id": "obs_right_pillar_1", "type": "static", "shape": "square", "position": [680.0, 550.0], "size": 80.0, "rotation": 0.0 }
   ]
 }

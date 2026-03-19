@@ -92,7 +92,7 @@ class Visualizer:
         self.initial_map_loaded = False # Cờ quan trọng để chống giật
         self.heuristic_debug_surface = None
         
-        self.load_scenario("annotations.json")
+        self.load_scenario("annotations1.json")
 
     def get_rect_vertices(self, x, y, w, h, angle):
         w2, h2 = w / 2.0, h / 2.0
@@ -153,10 +153,17 @@ class Visualizer:
             if py_obj['type'] == 'dynamic':
                 py_obj['velocity'] = list(obs_data['velocity'])
                 py_obj['bounds'] = obs_data['movement_bounds']
+
+            if py_obj['type'] == 'proximity':
+                py_obj['trigger_dist'] = obs_data.get('trigger_dist', 100.0)
+                py_obj['behavior'] = obs_data.get('behavior', 'appear_when_near')
+                py_obj['active'] = False if py_obj['behavior'] == 'appear_when_near' else True
+                py_obj['triggered'] = False
             
             py_obj['cpp_ref'] = obs_cpp
             self.py_obstacles.append(py_obj)
-            self.obstacles.append(obs_cpp)
+            if py_obj.get('active', True):
+                self.obstacles.append(obs_cpp)
 
         self.current_state = STATE_RUNNING
         self.init_algorithm()
@@ -197,6 +204,7 @@ class Visualizer:
         map_surf.fill((255, 255, 255)) 
         
         for py_obs in self.py_obstacles:
+            if not py_obs.get('active', True): continue
             if py_obs['shape'] == 'rectangle':
                 vertices = self.get_rect_vertices(py_obs['x'], py_obs['y'], py_obs['w'], py_obs['h'], py_obs['angle'])
                 pygame.draw.polygon(map_surf, (0, 0, 0), vertices)
@@ -326,26 +334,49 @@ class Visualizer:
                         self.last_obs_move_time = current_time
                         needs_cpp_update = False
                         new_obstacles_cpp = []
+
+                        # Lấy vị trí hiện tại của robot
+                        bot_pos = None
+                        if hasattr(self.rrtx, 'v_bot') and self.rrtx.v_bot:
+                            bot_pos = self.rrtx.v_bot.pos
                         
                         for py_obs in self.py_obstacles:
-                            if py_obs['type'] == 'dynamic':
-                                needs_cpp_update = True
-                                py_obs['x'] += py_obs['velocity'][0]
-                                py_obs['y'] += py_obs['velocity'][1]
-                                b = py_obs['bounds']
+                            # 1. KIỂM TRA LOGIC PROXIMITY
+                            if py_obs['type'] == 'proximity' and bot_pos and not py_obs.get('triggered', False):
+                                dist = math.hypot(py_obs['x'] - bot_pos[0], py_obs['y'] - bot_pos[1])
                                 
-                                if py_obs['x'] < b['x_min'] or py_obs['x'] > b['x_max']: py_obs['velocity'][0] *= -1
-                                if py_obs['y'] < b['y_min'] or py_obs['y'] > b['y_max']: py_obs['velocity'][1] *= -1
+                                if dist < py_obs['trigger_dist']:
+                                    # Chuyển đổi trạng thái
+                                    if py_obs['behavior'] == 'appear_when_near':
+                                        py_obs['active'] = True
+                                    else: # disappear_when_near
+                                        py_obs['active'] = False
 
-                                if py_obs['shape'] == 'circle':
-                                    new_cpp = Circle(py_obs['x'], py_obs['y'], py_obs['r'])
-                                else:
-                                    new_cpp = Rectangle(py_obs['x'], py_obs['y'], py_obs['w'], py_obs['h'], py_obs['angle'])
+                                    py_obs['triggered'] = True
+                                    needs_cpp_update = True
+
+                            # 2. CHỈ ĐƯA VÀO C++ NẾU ĐANG ACTIVE (Đây là mấu chốt)
+                            if py_obs.get('active', True):
+                                # Xử lý di chuyển cho dynamic
+                                if py_obs['type'] == 'dynamic':
+                                    needs_cpp_update = True
+                                    py_obs['x'] += py_obs['velocity'][0]
+                                    py_obs['y'] += py_obs['velocity'][1]
+                                    b = py_obs['bounds']
+                                    
+                                    if py_obs['x'] < b['x_min'] or py_obs['x'] > b['x_max']: py_obs['velocity'][0] *= -1
+                                    if py_obs['y'] < b['y_min'] or py_obs['y'] > b['y_max']: py_obs['velocity'][1] *= -1
+
+                                    if py_obs['shape'] == 'circle':
+                                        new_cpp = Circle(py_obs['x'], py_obs['y'], py_obs['r'])
+                                    else:
+                                        new_cpp = Rectangle(py_obs['x'], py_obs['y'], py_obs['w'], py_obs['h'], py_obs['angle'])
+                                    
+                                    self._gc_protector.append(new_cpp)
+                                    py_obs['cpp_ref'] = new_cpp
                                 
-                                self._gc_protector.append(new_cpp)
-                                py_obs['cpp_ref'] = new_cpp
-                            
-                            new_obstacles_cpp.append(py_obs['cpp_ref'])
+                                # Đưa vào danh sách gửi xuống thuật toán
+                                new_obstacles_cpp.append(py_obs['cpp_ref'])
 
                         if needs_cpp_update:
                             self.obstacles = new_obstacles_cpp
@@ -377,6 +408,7 @@ class Visualizer:
             self.screen.fill(COLOR_BG)
 
             for py_obs in self.py_obstacles:
+                if not py_obs.get('active', True): continue
                 if py_obs['shape'] == 'rectangle':
                     verts = self.get_rect_vertices(py_obs['x'], py_obs['y'], py_obs['w'], py_obs['h'], py_obs['angle'])
                     pygame.draw.polygon(self.screen, COLOR_OBSTACLE, verts)
