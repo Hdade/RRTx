@@ -1,12 +1,13 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-namespace config {
+namespace config
+{
     // Simulation Settings
     static constexpr int SCREEN_WIDTH = 800;
     static constexpr int SCREEN_HEIGHT = 600;
     static constexpr int FPS = 10;
-    
+
     // RRTX Hyperparameters
     static constexpr int MAX_ITER = 10000;
     static constexpr double DELTA = 5.0;
@@ -14,6 +15,9 @@ namespace config {
     static constexpr double GAMMA = 5000.0;
     static constexpr double GOAL_RADIUS = 20.0;
     static constexpr double HEURISTIC_RATIO = 0.85;
+
+    // RRTStar Hyperparameters
+    static constexpr int STABLE_THRESHOLD = 500;
 
     // Map Dimensions
     static constexpr double X_DIM = static_cast<double>(SCREEN_WIDTH);

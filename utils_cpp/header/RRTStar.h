@@ -49,15 +49,15 @@ public:
         dis_y = std::uniform_real_distribution<>(0, config::Y_DIM);
         spatial_grid = new SpatialGrid(config::GRID_SIZE);
 
-        v_goal->g = 0.0;
-        v_goal->lmc = 0.0;
+        v_start->g = 0.0;
+        v_start->lmc = 0.0;
 
-        v_start->g = std::numeric_limits<double>::infinity();
-        v_start->lmc = std::numeric_limits<double>::infinity();
+        v_goal->g = std::numeric_limits<double>::infinity();
+        v_goal->lmc = std::numeric_limits<double>::infinity();
 
-        V.push_back(v_goal);
-        spatial_grid->add(v_goal);
-        Q.insert(v_goal);
+        V.push_back(v_start);
+        spatial_grid->add(v_start);
+        Q.insert(v_start);
     }
 
     ~RRTStar()
@@ -123,7 +123,9 @@ public:
     // Main Loop
     Node *updateRobot();
     void run();
-    bool process_RRTStar(bool move_robot = true);
+    bool processRRTStar();
+    bool isPathBroken();
+    void resetTree();
 
     void updateSamplingDistribution(const std::vector<double> &flat_map, int width, int height);
     void updateNodeHeuristics();
