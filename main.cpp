@@ -74,4 +74,40 @@ PYBIND11_MODULE(rrtx_cpp, m) {
         .def("update_node_heuristics", &RRTx::updateNodeHeuristics)
         .def("obstacleHasChanged", &RRTx::obstacleHasChanged)
         .def("update_sampling_distribution", &RRTx::updateSamplingDistribution);
+    
+    py::class_<RRTStar>(m, "RRTStar")
+        .def(py::init<Node*, Node*, HolonomicModel*>(),
+             py::keep_alive<1, 2>(), py::keep_alive<1, 3>(), py::keep_alive<1, 4>())
+        .def_readwrite("v_bot", &RRTStar::v_bot, py::return_value_policy::reference)
+        .def_readwrite("V", &RRTStar::V, py::return_value_policy::reference)
+        .def_readwrite("Orphans", &RRTStar::Orphans, py::return_value_policy::reference)
+        .def("step",
+            [](RRTStar& self, bool move_robot) {
+                if (self.v_bot == nullptr) return false;
+                if (self.v_bot == self.v_goal) return true;
+
+                if (self.isPathBroken()) {
+                    self.resetTree();
+                    self.processRRTStar();
+                }
+
+                if (self.obstacleHasChanged()) {
+                    auto currentVisibleObstacle = self.getSensorData();
+                    self.updateObstacles(self.shrinkingBallRadius(), currentVisibleObstacle);
+                }
+
+                if (move_robot &&
+                    self.v_bot->lmc < std::numeric_limits<double>::infinity() &&
+                    self.v_bot != self.v_goal) {
+                    self.v_bot = self.updateRobot();
+                }
+
+                return (self.v_bot == self.v_goal);
+            },
+            py::arg("move_robot") = true)
+        .def("shrinking_ball_radius", &RRTStar::shrinkingBallRadius)
+        .def("update_obstacles", &RRTStar::updateObstacles)
+        .def("update_node_heuristics", &RRTStar::updateNodeHeuristics)
+        .def("obstacleHasChanged", &RRTStar::obstacleHasChanged)
+        .def("update_sampling_distribution", &RRTStar::updateSamplingDistribution);
 }
