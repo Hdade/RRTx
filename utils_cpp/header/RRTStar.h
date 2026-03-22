@@ -19,14 +19,14 @@
 class RRTStar
 {
 private:
-    Node *v_start;
-    Node *v_goal;
     std::vector<double> heuristic_map;
     int map_width = 0;
     int map_height = 0;
     double getHeuristicProbability(double x, double y);
 
 public:
+    Node *v_start;
+    Node *v_goal;
     Node *v_bot;
     std::vector<Node *> V;
     IndexedHeap Q;

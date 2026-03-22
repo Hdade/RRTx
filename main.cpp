@@ -6,6 +6,8 @@
 #include "node.h"
 #include "model.h"
 #include "RRTx.h"
+#include "RRTStar.h"
+#include <limits>
 
 namespace py = pybind11;
 

@@ -29,57 +29,66 @@ STATE_SET_GOAL = 2
 STATE_TEST_MODEL = 3
 STATE_RUNNING = 4
 
+
 class Visualizer:
     def __init__(self, model_type="gan", planner_type="rrtx"):
         pygame.init()
         self.screen = pygame.display.set_mode((Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
+
         self.model_type = model_type.upper()
-        
         self.planner_type = planner_type.lower()
+
         planner_name = "RRTx" if self.planner_type == "rrtx" else "RRT*"
-        
-        pygame.display.set_caption(f"RRTX C++ Backend Interactive Planner - {self.model_type} Model")
+        pygame.display.set_caption(f"{planner_name} C++ Backend Interactive Planner - {self.model_type} Model")
+
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("Consolas", 14)
         self.large_font = pygame.font.SysFont("Consolas", 20, bold=True)
 
         self.current_state = STATE_SETUP_OBSTACLES
-        
-        # Bảo vệ RAM khỏi Garbage Collector
-        self._gc_protector = [] 
 
-        self.py_obstacles = [] 
+        self._gc_protector = []
+        self.py_obstacles = []
         self.obstacles = []
-        
+
         self.start_node = None
         self.goal_node = None
         self.model = None
-        self.rrtx = None
-        
-        # --- TÁCH BIỆT THỜI GIAN (FIX LỖI ĐỨNG YÊN) ---
-        self.obstacle_move_delay = 50  # Chướng ngại vật cập nhật mỗi 50ms
+        self.planner = None
+
+        self.obstacle_move_delay = 50
         self.last_obs_move_time = 0
-        
-        self.robot_move_delay = 100    # Robot bước đi mỗi 100ms (cho C++ kịp tính toán)
+
+        self.robot_move_delay = 100
         self.last_robot_move_time = 0
-        
+
         self.show_tree = True
         self.paused = False
         self.use_heuristic = True
 
         self.model_input_queue = multiprocessing.Queue()
         self.model_output_queue = multiprocessing.Queue()
-        
+
         if self.model_type == "GAN":
-            print(">>> [Main] Starting GAN Worker Process...")
+            print(">>> [Main] Starting GAN Worker Process.")
             checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_40.pth"
             target_func = gan_worker_loop
-            target_args = (self.model_input_queue, self.model_output_queue, checkpoint_path, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
+            target_args = (
+                self.model_input_queue,
+                self.model_output_queue,
+                checkpoint_path,
+                (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT),
+            )
         elif self.model_type == "SFD":
-            print(">>> [Main] Starting SFD Worker Process...")
-            checkpoint_path = "checkpoints/SFD_checkpoints"
+            print(">>> [Main] Starting SFD Worker Process.")
+            checkpoint_path = "checkpoints/SFD_checkpoint/best_model.pth"
             target_func = sfd_worker_loop
-            target_args = (self.model_input_queue, self.model_output_queue, checkpoint_path, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
+            target_args = (
+                self.model_input_queue,
+                self.model_output_queue,
+                checkpoint_path,
+                (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT),
+            )
         else:
             self.use_heuristic = False
             self.model_input_queue = None
@@ -91,12 +100,12 @@ class Visualizer:
             self.worker_process.start()
         else:
             self.worker_process = None
-            
+
         self.pending_model_request = False
         self.sampling_map_updated = False
-        self.initial_map_loaded = False # Cờ quan trọng để chống giật
+        self.initial_map_loaded = False
         self.heuristic_debug_surface = None
-        
+
         self.load_scenario("annotations1.json")
 
     def get_rect_vertices(self, x, y, w, h, angle):
@@ -110,15 +119,24 @@ class Visualizer:
         w, h = Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT
         thickness = 40
         borders = [
-            (w/2, thickness/2, w, thickness),
-            (w/2, h - thickness/2, w, thickness),
-            (thickness/2, h/2, thickness, h),
-            (w - thickness/2, h/2, thickness, h)
+            (w / 2, thickness / 2, w, thickness),
+            (w / 2, h - thickness / 2, w, thickness),
+            (thickness / 2, h / 2, thickness, h),
+            (w - thickness / 2, h / 2, thickness, h),
         ]
         for bx, by, bw, bh in borders:
             obs_cpp = Rectangle(bx, by, bw, bh, 0)
             self._gc_protector.append(obs_cpp)
-            py_obj = {'shape': 'rectangle', 'x': bx, 'y': by, 'w': bw, 'h': bh, 'angle': 0, 'type': 'static', 'cpp_ref': obs_cpp}
+            py_obj = {
+                "shape": "rectangle",
+                "x": bx,
+                "y": by,
+                "w": bw,
+                "h": bh,
+                "angle": 0,
+                "type": "static",
+                "cpp_ref": obs_cpp,
+            }
             self.py_obstacles.append(py_obj)
             self.obstacles.append(obs_cpp)
 
@@ -126,34 +144,31 @@ class Visualizer:
         with open(json_path, "r") as f:
             data = json.load(f)
 
-        # ===== Reset planner state =====
         self.planner = None
         self.model = None
         self.pending_model_request = False
         self.sampling_map_updated = False
+        self.initial_map_loaded = False
+        self.heuristic_debug_surface = None
 
-        # ===== Start / Goal =====
         self.start_node = Node(float(data["start"][0]), float(data["start"][1]))
         self.goal_node = Node(float(data["goal"][0]), float(data["goal"][1]))
 
-        # ===== Reset obstacles =====
         self.py_obstacles = []
         self.obstacles = []
+        self._gc_protector = []
 
         self.create_borders()
 
         for obs_data in data["obstacles"]:
             shape = obs_data.get("shape", "rectangle")
-
             current_pos = obs_data.get("center") if shape == "circle" else obs_data.get("position")
-            x = float(current_pos[0])
-            y = float(current_pos[1])
+            x, y = float(current_pos[0]), float(current_pos[1])
 
             if shape == "circle":
                 r = float(obs_data["radius"])
                 py_obj = {"shape": "circle", "x": x, "y": y, "r": r}
                 obs_cpp = Circle(x, y, r)
-
             else:
                 if shape == "square":
                     w = float(obs_data["size"])
@@ -161,36 +176,42 @@ class Visualizer:
                 else:
                     w = float(obs_data["width"])
                     h = float(obs_data.get("height", w))
-
                 angle = float(obs_data.get("rotation", 0))
-
-                py_obj = {
-                    "shape": "rectangle",
-                    "x": x,
-                    "y": y,
-                    "w": w,
-                    "h": h,
-                    "angle": angle
-                }
+                py_obj = {"shape": "rectangle", "x": x, "y": y, "w": w, "h": h, "angle": angle}
                 obs_cpp = Rectangle(x, y, w, h, angle)
 
+            self._gc_protector.append(obs_cpp)
+
             py_obj["type"] = obs_data.get("type", "static")
-            py_obj["cpp_ref"] = obs_cpp
 
             if py_obj["type"] == "dynamic":
-                py_obj["velocity"] = obs_data.get("velocity", [1.0, 1.0])
-                py_obj["bounds"] = obs_data.get("bounds", {
-                    "x_min": 0,
-                    "x_max": Config.SCREEN_WIDTH,
-                    "y_min": 0,
-                    "y_max": Config.SCREEN_HEIGHT
-                })
+                py_obj["velocity"] = list(obs_data.get("velocity", [1.0, 1.0]))
+                py_obj["bounds"] = obs_data.get(
+                    "movement_bounds",
+                    obs_data.get(
+                        "bounds",
+                        {
+                            "x_min": 0,
+                            "x_max": Config.SCREEN_WIDTH,
+                            "y_min": 0,
+                            "y_max": Config.SCREEN_HEIGHT,
+                        },
+                    ),
+                )
 
-            self._gc_protector.append(obs_cpp)
+            if py_obj["type"] == "proximity":
+                py_obj["trigger_dist"] = obs_data.get("trigger_dist", 100.0)
+                py_obj["behavior"] = obs_data.get("behavior", "appear_when_near")
+                py_obj["active"] = False if py_obj["behavior"] == "appear_when_near" else True
+                py_obj["triggered"] = False
+
+            py_obj["cpp_ref"] = obs_cpp
             self.py_obstacles.append(py_obj)
 
-        # ===== Sync CPP obstacle list =====
-        self.obstacles = [p["cpp_ref"] for p in self.py_obstacles]
+        self.obstacles = [p["cpp_ref"] for p in self.py_obstacles if p.get("active", True)]
+
+        self.current_state = STATE_RUNNING
+        self.init_algorithm()
 
     def create_heatmap_surface_from_data(self, flat_map):
         w, h = Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT
@@ -203,20 +224,23 @@ class Visualizer:
         return heatmap_surf
 
     def check_model_result(self):
-        if not self.use_heuristic: return
+        if not self.use_heuristic:
+            return
         try:
             flat_map = self.model_output_queue.get_nowait()
             safe_flat_map = np.ascontiguousarray(flat_map.flatten(), dtype=np.float64)
             self.heuristic_debug_surface = self.create_heatmap_surface_from_data(flat_map)
-            
-            if self.rrtx:
-                self.rrtx.update_sampling_distribution(safe_flat_map, Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT)
-                self.rrtx.update_node_heuristics()
-                
+
+            if self.planner:
+                self.planner.update_sampling_distribution(
+                    safe_flat_map, Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT
+                )
+                self.planner.update_node_heuristics()
+
             print(f">>> [Main] Received Heatmap from {self.model_type} Worker!")
             self.pending_model_request = False
             self.sampling_map_updated = True
-            self.initial_map_loaded = True # Đã nhận được map đầu tiên
+            self.initial_map_loaded = True
         except queue.Empty:
             pass
         except Exception as e:
@@ -225,39 +249,55 @@ class Visualizer:
     def get_model_input_from_pygame(self):
         w, h = Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT
         map_surf = pygame.Surface((w, h))
-        map_surf.fill((255, 255, 255)) 
-        
+        map_surf.fill((255, 255, 255))
+
         for py_obs in self.py_obstacles:
-            if not py_obs.get('active', True): continue
-            if py_obs['shape'] == 'rectangle':
-                vertices = self.get_rect_vertices(py_obs['x'], py_obs['y'], py_obs['w'], py_obs['h'], py_obs['angle'])
+            if not py_obs.get("active", True):
+                continue
+            if py_obs["shape"] == "rectangle":
+                vertices = self.get_rect_vertices(
+                    py_obs["x"], py_obs["y"], py_obs["w"], py_obs["h"], py_obs["angle"]
+                )
                 pygame.draw.polygon(map_surf, (0, 0, 0), vertices)
-            elif py_obs['shape'] == 'circle':
-                pygame.draw.circle(map_surf, (0, 0, 0), (int(py_obs['x']), int(py_obs['y'])), int(py_obs['r']))
-        
+            elif py_obs["shape"] == "circle":
+                pygame.draw.circle(
+                    map_surf,
+                    (0, 0, 0),
+                    (int(py_obs["x"]), int(py_obs["y"])),
+                    int(py_obs["r"]),
+                )
+
         map_arr = pygame.surfarray.array3d(map_surf).transpose(1, 0, 2)
-        
+
         points_surf = pygame.Surface((w, h))
-        points_surf.fill((255, 255, 255)) 
-        
+        points_surf.fill((255, 255, 255))
+
         start_pos = None
         if self.planner and hasattr(self.planner, "v_bot") and self.planner.v_bot is not None:
             start_pos = (int(self.planner.v_bot.pos[0]), int(self.planner.v_bot.pos[1]))
         elif self.start_node:
             start_pos = (int(self.start_node.pos[0]), int(self.start_node.pos[1]))
 
-        if start_pos: pygame.draw.circle(points_surf, COLOR_START, start_pos, 10)
-        if self.goal_node: pygame.draw.circle(points_surf, COLOR_GOAL, (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 10)
-        
+        if start_pos:
+            pygame.draw.circle(points_surf, COLOR_START, start_pos, 10)
+        if self.goal_node:
+            pygame.draw.circle(
+                points_surf,
+                COLOR_GOAL,
+                (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])),
+                10,
+            )
+
         points_arr = pygame.surfarray.array3d(points_surf).transpose(1, 0, 2)
         return map_arr, points_arr
-    
+
     def update_model_heuristic(self):
-        if not self.use_heuristic or self.pending_model_request: return
+        if not self.use_heuristic or self.pending_model_request:
+            return
         map_img, points_img = self.get_model_input_from_pygame()
         self.model_input_queue.put((map_img, points_img))
         self.pending_model_request = True
-        print(f">>> [Main] Sent request to {self.model_type} Worker...")
+        print(f">>> [Main] Sent request to {self.model_type} Worker.")
 
     def init_algorithm(self):
         planner_name = "RRTx" if self.planner_type == "rrtx" else "RRT*"
@@ -280,8 +320,10 @@ class Visualizer:
         for i in range(n + 1):
             p2x, p2y = vertices[i % n]
             if y > min(p1y, p2y) and y <= max(p1y, p2y) and x <= max(p1x, p2x):
-                if p1y != p2y: xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                if p1x == p2x or x <= xinters: inside = not inside
+                if p1y != p2y:
+                    xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                if p1x == p2x or x <= xinters:
+                    inside = not inside
             p1x, p1y = p2x, p2y
         return inside
 
@@ -291,30 +333,75 @@ class Visualizer:
             w, h, angle = 60, 60, 0
             obs_cpp = Rectangle(mx, my, w, h, angle)
             self._gc_protector.append(obs_cpp)
-            self.py_obstacles.append({'shape': 'rectangle', 'x': mx, 'y': my, 'w': w, 'h': h, 'angle': angle, 'type': 'static', 'cpp_ref': obs_cpp})
+            self.py_obstacles.append(
+                {
+                    "shape": "rectangle",
+                    "x": mx,
+                    "y": my,
+                    "w": w,
+                    "h": h,
+                    "angle": angle,
+                    "type": "static",
+                    "cpp_ref": obs_cpp,
+                }
+            )
             self.obstacles.append(obs_cpp)
             if self.current_state == STATE_RUNNING and self.planner:
                 r = self.planner.shrinking_ball_radius()
                 self.planner.update_obstacles(r, self.obstacles)
-                self.sampling_map_updated = False 
+                self.sampling_map_updated = False
         else:
             for i in range(len(self.py_obstacles) - 1, -1, -1):
                 py_obs = self.py_obstacles[i]
                 inside = False
-                if py_obs['shape'] == 'rectangle':
-                    verts = self.get_rect_vertices(py_obs['x'], py_obs['y'], py_obs['w'], py_obs['h'], py_obs['angle'])
+                if py_obs["shape"] == "rectangle":
+                    verts = self.get_rect_vertices(
+                        py_obs["x"], py_obs["y"], py_obs["w"], py_obs["h"], py_obs["angle"]
+                    )
                     inside = self.is_point_inside_polygon((mx, my), verts)
-                elif py_obs['shape'] == 'circle':
-                    inside = ((mx - py_obs['x'])**2 + (my - py_obs['y'])**2) <= (py_obs['r']**2)
-                
+                elif py_obs["shape"] == "circle":
+                    inside = ((mx - py_obs["x"]) ** 2 + (my - py_obs["y"]) ** 2) <= (py_obs["r"] ** 2)
+
                 if inside:
                     self.py_obstacles.pop(i)
-                    self.obstacles = [p['cpp_ref'] for p in self.py_obstacles]
-                    if self.current_state == STATE_RUNNING and self.rrtx:
-                        r = self.rrtx.shrinking_ball_radius()
-                        self.rrtx.update_obstacles(r, self.obstacles)
+                    self.obstacles = [p["cpp_ref"] for p in self.py_obstacles if p.get("active", True)]
+                    if self.current_state == STATE_RUNNING and self.planner:
+                        r = self.planner.shrinking_ball_radius()
+                        self.planner.update_obstacles(r, self.obstacles)
                         self.sampling_map_updated = False
                     break
+
+    def draw_ui_overlay(self, is_ready=True):
+        status_text, instruct_text = "", ""
+        planner_label = "RRTx" if self.planner_type == "rrtx" else "RRT*"
+
+        if self.current_state == STATE_SETUP_OBSTACLES:
+            status_text, instruct_text = "MODE: MAP EDITING", "[L-Click]: Add Obs | [ENTER]: Done"
+        elif self.current_state == STATE_SET_START:
+            status_text, instruct_text = "MODE: SET START", "[L-Click]: Place Start"
+        elif self.current_state == STATE_SET_GOAL:
+            status_text, instruct_text = "MODE: SET GOAL", "[L-Click]: Place Goal"
+        elif self.current_state == STATE_TEST_MODEL:
+            status_text, instruct_text = (
+                f"MODE: {self.model_type} VISUALIZATION",
+                "[L-Click]: Move Obs | [SPACE]: Refresh | [ENTER]: Run",
+            )
+        elif self.current_state == STATE_RUNNING:
+            if not is_ready:
+                status_text, instruct_text = "MODE: INITIALIZING AI...", "Waiting for first heatmap..."
+            else:
+                cost = (
+                    self.planner.v_bot.lmc
+                    if (self.planner and hasattr(self.planner, "v_bot") and self.planner.v_bot is not None)
+                    else 0.0
+                )
+                cost_str = f"{cost:.2f}" if cost < float("inf") else "Inf"
+                status_text = f"MODE: {planner_label} RUNNING"
+                instruct_text = f"Cost: {cost_str} | [P]: Pause | [T]: Toggle Tree"
+
+        pygame.draw.rect(self.screen, (0, 0, 0), (0, 0, Config.SCREEN_WIDTH, 60))
+        self.screen.blit(self.large_font.render(status_text, True, COLOR_ORPHAN), (10, 5))
+        self.screen.blit(self.font.render(instruct_text, True, COLOR_TEXT), (10, 35))
 
     def run(self):
         running = True
@@ -359,24 +446,10 @@ class Visualizer:
                         self.current_state = STATE_TEST_MODEL
                         self.update_model_heuristic()
 
-            current_time = pygame.time.get_ticks()
+            self.check_model_result()
 
-            if self.use_heuristic and self.pending_model_request:
-                try:
-                    predicted_map = self.model_output_queue.get_nowait()
-                    if self.planner is not None:
-                        flat_map = predicted_map.astype(np.float32).flatten().tolist()
-                        self.planner.update_sampling_distribution(
-                            flat_map,
-                            predicted_map.shape[1],
-                            predicted_map.shape[0],
-                        )
-                        self.planner.update_node_heuristics()
-                        self.sampling_map_updated = True
-                    self.pending_model_request = False
-                    print(">>> [Main] Received heuristic map from worker.")
-                except queue.Empty:
-                    pass
+            current_time = pygame.time.get_ticks()
+            is_model_ready = (not self.use_heuristic) or self.initial_map_loaded
 
             if self.current_state == STATE_RUNNING and self.planner and not self.paused:
                 if current_time - self.last_obs_move_time > self.obstacle_move_delay:
@@ -385,10 +458,13 @@ class Visualizer:
                     needs_cpp_update = False
                     new_obstacles_cpp = []
 
-                    for py_obs in self.py_obstacles:
-                        if not py_obs.get("active", True):
-                            continue
+                    bot_x = None
+                    bot_y = None
+                    if hasattr(self.planner, "v_bot") and self.planner.v_bot is not None:
+                        bot_x = self.planner.v_bot.pos[0]
+                        bot_y = self.planner.v_bot.pos[1]
 
+                    for py_obs in self.py_obstacles:
                         if py_obs.get("type") == "dynamic":
                             needs_cpp_update = True
                             py_obs["x"] += py_obs["velocity"][0]
@@ -397,24 +473,42 @@ class Visualizer:
 
                             if py_obs["x"] < b["x_min"] or py_obs["x"] > b["x_max"]:
                                 py_obs["velocity"][0] *= -1
+                                py_obs["x"] = max(b["x_min"], min(py_obs["x"], b["x_max"]))
                             if py_obs["y"] < b["y_min"] or py_obs["y"] > b["y_max"]:
                                 py_obs["velocity"][1] *= -1
+                                py_obs["y"] = max(b["y_min"], min(py_obs["y"], b["y_max"]))
 
-                            if py_obs["shape"] == "circle":
-                                new_cpp = Circle(py_obs["x"], py_obs["y"], py_obs["r"])
-                            else:
-                                new_cpp = Rectangle(py_obs["x"], py_obs["y"], py_obs["w"], py_obs["h"], py_obs["angle"])
+                        if py_obs.get("type") == "proximity":
+                            if bot_x is not None and bot_y is not None:
+                                dist = math.hypot(py_obs["x"] - bot_x, py_obs["y"] - bot_y)
+                                if py_obs["behavior"] == "appear_when_near":
+                                    new_active = dist <= py_obs["trigger_dist"]
+                                else:
+                                    new_active = dist > py_obs["trigger_dist"]
+                                if py_obs.get("active", True) != new_active:
+                                    needs_cpp_update = True
+                                py_obs["active"] = new_active
 
-                            self._gc_protector.append(new_cpp)
-                            py_obs["cpp_ref"] = new_cpp
+                        if py_obs["shape"] == "circle":
+                            new_cpp = Circle(py_obs["x"], py_obs["y"], py_obs["r"])
+                        else:
+                            new_cpp = Rectangle(
+                                py_obs["x"], py_obs["y"], py_obs["w"], py_obs["h"], py_obs["angle"]
+                            )
 
-                        new_obstacles_cpp.append(py_obs["cpp_ref"])
+                        self._gc_protector.append(new_cpp)
+                        py_obs["cpp_ref"] = new_cpp
+
+                        if py_obs.get("active", True):
+                            new_obstacles_cpp.append(new_cpp)
 
                     if needs_cpp_update:
                         self.obstacles = new_obstacles_cpp
                         r = self.planner.shrinking_ball_radius()
                         self.planner.update_obstacles(r, self.obstacles)
                         self.sampling_map_updated = False
+                        if self.use_heuristic:
+                            self.update_model_heuristic()
 
                 should_move_robot = False
                 reached_goal = False
@@ -432,9 +526,8 @@ class Visualizer:
                     if not reached_goal:
                         should_move_robot = True
                     else:
-                        if self.current_state == STATE_RUNNING:
-                            print("\n>>> [Success] Robot đã chạm đích an toàn!")
-                            self.current_state = STATE_TEST_MODEL
+                        print("\n>>> [Success] Robot đã chạm đích an toàn!")
+                        self.current_state = STATE_TEST_MODEL
 
                 self.planner.step(move_robot=should_move_robot)
 
@@ -444,79 +537,65 @@ class Visualizer:
                 if not py_obs.get("active", True):
                     continue
                 if py_obs["shape"] == "rectangle":
-                    verts = self.get_rect_vertices(py_obs["x"], py_obs["y"], py_obs["w"], py_obs["h"], py_obs["angle"])
+                    verts = self.get_rect_vertices(
+                        py_obs["x"], py_obs["y"], py_obs["w"], py_obs["h"], py_obs["angle"]
+                    )
                     pygame.draw.polygon(self.screen, COLOR_OBSTACLE, verts)
-                    pygame.draw.polygon(self.screen, COLOR_OBSTACLE_BORDER, verts, 2)
-                else:
-                    pygame.draw.circle(
-                        self.screen,
-                        COLOR_OBSTACLE,
-                        (int(py_obs["x"]), int(py_obs["y"])),
-                        int(py_obs["r"]),
-                    )
-                    pygame.draw.circle(
-                        self.screen,
-                        COLOR_OBSTACLE_BORDER,
-                        (int(py_obs["x"]), int(py_obs["y"])),
-                        int(py_obs["r"]),
-                        2,
-                    )
+                    pygame.draw.lines(self.screen, COLOR_OBSTACLE_BORDER, True, verts, 2)
+                elif py_obs["shape"] == "circle":
+                    cx, cy, r = int(py_obs["x"]), int(py_obs["y"]), int(py_obs["r"])
+                    pygame.draw.circle(self.screen, COLOR_OBSTACLE, (cx, cy), r)
+                    pygame.draw.circle(self.screen, COLOR_OBSTACLE_BORDER, (cx, cy), r, 2)
 
-            if self.show_tree and self.planner:
-                for node in self.planner.V:
-                    if node.parent is not None:
-                        p1 = (int(node.pos[0]), int(node.pos[1]))
-                        p2 = (int(node.parent.pos[0]), int(node.parent.pos[1]))
-                        color = COLOR_HEURISTIC_TREE if getattr(node, "heuristic_val", 0.0) > 0.5 else COLOR_TREE
-                        pygame.draw.line(self.screen, color, p1, p2, 1)
+            if self.current_state == STATE_TEST_MODEL and self.heuristic_debug_surface:
+                self.screen.blit(self.heuristic_debug_surface, (0, 0))
 
-            if self.planner and hasattr(self.planner, "v_bot") and self.planner.v_bot is not None:
-                current = self.planner.v_bot
-                while current is not None:
-                    pygame.draw.circle(
-                        self.screen,
-                        COLOR_PATH,
-                        (int(current.pos[0]), int(current.pos[1])),
-                        3,
-                    )
-                    if current.parent is not None:
-                        pygame.draw.line(
-                            self.screen,
-                            COLOR_PATH,
-                            (int(current.pos[0]), int(current.pos[1])),
-                            (int(current.parent.pos[0]), int(current.parent.pos[1])),
-                            3,
-                        )
-                    current = current.parent
-
+            if self.start_node:
                 pygame.draw.circle(
                     self.screen,
-                    COLOR_ROBOT,
-                    (int(self.planner.v_bot.pos[0]), int(self.planner.v_bot.pos[1])),
+                    COLOR_START,
+                    (int(self.start_node.pos[0]), int(self.start_node.pos[1])),
+                    8,
+                )
+            if self.goal_node:
+                pygame.draw.circle(
+                    self.screen,
+                    COLOR_GOAL,
+                    (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])),
                     8,
                 )
 
-            if self.start_node:
-                pygame.draw.circle(self.screen, COLOR_START, (int(self.start_node.pos[0]), int(self.start_node.pos[1])), 8)
-            if self.goal_node:
-                pygame.draw.circle(self.screen, COLOR_GOAL, (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 8)
+            if self.current_state == STATE_RUNNING and self.planner and is_model_ready:
+                if self.show_tree:
+                    for node in self.planner.V:
+                        if node.parent:
+                            s = (int(node.pos[0]), int(node.pos[1]))
+                            e = (int(node.parent.pos[0]), int(node.parent.pos[1]))
+                            if getattr(node, "heuristic_val", 0.0) > 0.4:
+                                pygame.draw.line(self.screen, COLOR_HEURISTIC_TREE, s, e, 2)
+                            else:
+                                pygame.draw.line(self.screen, COLOR_TREE, s, e, 1)
 
-            planner_label = "RRTx" if self.planner_type == "rrtx" else "RRT*"
-            info = [
-                f"Planner: {planner_label}",
-                f"Model: {self.model_type}",
-                "ENTER: next/start",
-                "P: pause",
-                "T: toggle tree",
-                "SPACE: refresh heuristic",
-                "ESC: quit",
-            ]
-            for i, txt in enumerate(info):
-                surf = self.font.render(txt, True, COLOR_TEXT)
-                self.screen.blit(surf, (10, 10 + i * 18))
+                if hasattr(self.planner, "v_bot") and self.planner.v_bot is not None:
+                    bot_pos = (int(self.planner.v_bot.pos[0]), int(self.planner.v_bot.pos[1]))
+                    pygame.draw.circle(self.screen, COLOR_ROBOT, bot_pos, 8)
 
+                    path = []
+                    curr = self.planner.v_bot
+                    visited = set()
+                    while curr is not None and curr not in visited:
+                        visited.add(curr)
+                        path.append((curr.pos[0], curr.pos[1]))
+                        if curr.parent is None:
+                            break
+                        curr = curr.parent
+
+                    if len(path) > 1:
+                        pygame.draw.lines(self.screen, COLOR_PATH, False, path, 3)
+
+            self.draw_ui_overlay(is_model_ready if self.current_state == STATE_RUNNING else True)
             pygame.display.flip()
-            self.clock.tick(Config.FPS)
+            self.clock.tick(60)
 
         if self.worker_process is not None:
             self.worker_process.terminate()
@@ -526,73 +605,35 @@ class Visualizer:
         sys.exit()
 
 
-    def draw_ui_overlay(self, is_ready=True):
-        status_text, instruct_text = "", ""
-        if self.current_state == STATE_SETUP_OBSTACLES:
-            status_text, instruct_text = "MODE: MAP EDITING", "[L-Click]: Add Obs | [ENTER]: Done"
-        elif self.current_state == STATE_SET_START:
-            status_text, instruct_text = "MODE: SET START", "[L-Click]: Place Start"
-        elif self.current_state == STATE_SET_GOAL:
-            status_text, instruct_text = "MODE: SET GOAL", "[L-Click]: Place Goal"
-        elif self.current_state == STATE_TEST_MODEL:
-            status_text, instruct_text = f"MODE: {self.model_type} VISUALIZATION", "[L-Click]: Move Obs | [SPACE]: Refresh | [ENTER]: Run"
-        elif self.current_state == STATE_RUNNING:
-            if not is_ready:
-                status_text, instruct_text = "MODE: INITIALIZING AI...", "Waiting for Model to load and map heuristics..."
-            else:
-                cost = self.rrtx.v_bot.lmc if (hasattr(self.rrtx, 'v_bot') and self.rrtx.v_bot is not None) else 0
-                cost_str = f"{cost:.2f}" if cost < float('inf') else "Inf"
-                status_text, instruct_text = "MODE: RRTx RUNNING", f"Cost: {cost_str} | [L-Click]: Add Obs | [SPACE]: Pause"
-
-        pygame.draw.rect(self.screen, (0,0,0), (0, 0, Config.SCREEN_WIDTH, 60))
-        self.screen.blit(self.large_font.render(status_text, True, COLOR_ORPHAN), (10, 5))
-        self.screen.blit(self.font.render(instruct_text, True, COLOR_TEXT), (10, 35))
-
 if __name__ == "__main__":
-    import multiprocessing
-    import argparse
-    import sys
-
-    # ===== BẮT BUỘC cho multiprocessing (đặc biệt Windows) =====
     multiprocessing.set_start_method("spawn", force=True)
 
-    # ===== Argument Parser =====
     parser = argparse.ArgumentParser(
         description="Interactive RRTx / RRT* Path Planning Visualization"
     )
-
     parser.add_argument(
         "--model",
         type=str,
         default="gan",
         choices=["gan", "sfd", "none"],
-        help="Heuristic model to guide planner"
+        help="Heuristic model to guide planner",
     )
-
     parser.add_argument(
         "--planner",
         type=str,
         default="rrtx",
         choices=["rrtx", "rrtstar"],
-        help="Planner algorithm"
+        help="Planner algorithm",
     )
-
     parser.add_argument(
         "--scenario",
         type=str,
         default="annotations1.json",
-        help="Path to scenario JSON file"
-    )
-
-    parser.add_argument(
-        "--no-gui",
-        action="store_true",
-        help="Run without visualization (debug mode)"
+        help="Path to scenario JSON file",
     )
 
     args = parser.parse_args()
 
-    # ===== Debug info =====
     print("\n==============================")
     print(" RRT Planner Configuration")
     print("==============================")
@@ -601,30 +642,7 @@ if __name__ == "__main__":
     print(f"Scenario  : {args.scenario}")
     print("==============================\n")
 
-    # ===== Khởi tạo Visualizer =====
-    try:
-        vis = Visualizer(
-            model_type=args.model,
-            planner_type=args.planner
-        )
-
-        # load scenario nếu muốn override
-        if args.scenario:
-            vis.load_scenario(args.scenario)
-
-        # ===== Run =====
-        if not args.no_gui:
-            vis.run()
-        else:
-            print("No-GUI mode chưa implement loop headless.")
-            print("→ Bạn có thể thêm benchmark loop ở đây nếu cần.")
-
-    except KeyboardInterrupt:
-        print("\n>>> Interrupted by user (Ctrl+C)")
-        sys.exit(0)
-
-    except Exception as e:
-        print("\n>>> ERROR:", str(e))
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    vis = Visualizer(model_type=args.model, planner_type=args.planner)
+    if args.scenario:
+        vis.load_scenario(args.scenario)
+    vis.run()
