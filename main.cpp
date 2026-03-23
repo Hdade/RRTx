@@ -6,11 +6,13 @@
 #include "node.h"
 #include "model.h"
 #include "RRTx.h"
+#include "RRTStar.h"
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(rrtx_cpp, m) {
-    m.doc() = "RRTx C++ Backend optimized plugin";
+PYBIND11_MODULE(rrtx_cpp, m)
+{
+    m.doc() = "RRTx & RRT* C++ Backend optimized plugin";
     auto config_m = m.def_submodule("config", "Simulation Constants");
     config_m.attr("SCREEN_WIDTH") = config::SCREEN_WIDTH;
     config_m.attr("SCREEN_HEIGHT") = config::SCREEN_HEIGHT;
@@ -29,11 +31,11 @@ PYBIND11_MODULE(rrtx_cpp, m) {
         .def_readwrite("x", &Vec2D::x)
         .def_readwrite("y", &Vec2D::y)
         .def("norm", &Vec2D::norm)
-        .def("__getitem__", [](const Vec2D &v, size_t i) {
+        .def("__getitem__", [](const Vec2D &v, size_t i)
+             {
             if (i == 0) return v.x;
             if (i == 1) return v.y;
-            throw py::index_error();
-        });
+            throw py::index_error(); });
 
     py::class_<Obstacle, std::shared_ptr<Obstacle>>(m, "Obstacle");
 
@@ -44,13 +46,13 @@ PYBIND11_MODULE(rrtx_cpp, m) {
 
     py::class_<Rectangle, Obstacle, std::shared_ptr<Rectangle>>(m, "Rectangle")
         .def(py::init<double, double, double, double, double>())
-        .def("get_vertices", [](const Rectangle &r) {
+        .def("get_vertices", [](const Rectangle &r)
+             {
             std::vector<std::vector<double>> verts;
             for(const auto& v : r.vertices) {
                 verts.push_back({v.x, v.y});
             }
-            return verts;
-        });
+            return verts; });
 
     py::class_<Node>(m, "Node")
         .def(py::init<double, double>())
@@ -61,10 +63,10 @@ PYBIND11_MODULE(rrtx_cpp, m) {
         .def_readwrite("heuristic_val", &Node::heuristic_val);
 
     py::class_<HolonomicModel>(m, "HolonomicModel")
-        .def(py::init<const std::vector<Obstacle*>&>());
+        .def(py::init<const std::vector<Obstacle *> &>());
 
     py::class_<RRTx>(m, "RRTx")
-        .def(py::init<Node*, Node*, HolonomicModel*>(), py::keep_alive<1, 2>(), py::keep_alive<1, 3>(), py::keep_alive<1, 4>())
+        .def(py::init<Node *, Node *, HolonomicModel *>(), py::keep_alive<1, 2>(), py::keep_alive<1, 3>(), py::keep_alive<1, 4>())
         .def_readwrite("v_bot", &RRTx::v_bot, py::return_value_policy::reference)
         .def_readwrite("V", &RRTx::V, py::return_value_policy::reference)
         .def_readwrite("Orphans", &RRTx::Orphans, py::return_value_policy::reference)
@@ -74,4 +76,19 @@ PYBIND11_MODULE(rrtx_cpp, m) {
         .def("update_node_heuristics", &RRTx::updateNodeHeuristics)
         .def("obstacleHasChanged", &RRTx::obstacleHasChanged)
         .def("update_sampling_distribution", &RRTx::updateSamplingDistribution);
+
+    py::class_<RRTStar>(m, "RRTStar")
+        .def(py::init<Node *, Node *, HolonomicModel *>(), py::keep_alive<1, 2>(), py::keep_alive<1, 3>(), py::keep_alive<1, 4>())
+        .def_readwrite("v_bot", &RRTStar::v_bot, py::return_value_policy::reference)
+        .def_readwrite("V", &RRTStar::V, py::return_value_policy::reference)
+        .def_readwrite("Orphans", &RRTStar::Orphans, py::return_value_policy::reference)
+        .def("process_rrt_star", &RRTStar::processRRTStar)
+        .def("run", &RRTStar::run)
+        .def("is_path_broken", &RRTStar::isPathBroken)
+        .def("reset_tree", &RRTStar::resetTree)
+        .def("shrinking_ball_radius", &RRTStar::shrinkingBallRadius)
+        .def("update_obstacles", &RRTStar::updateObstacles)
+        .def("update_node_heuristics", &RRTStar::updateNodeHeuristics)
+        .def("obstacleHasChanged", &RRTStar::obstacleHasChanged)
+        .def("update_sampling_distribution", &RRTStar::updateSamplingDistribution);
 }

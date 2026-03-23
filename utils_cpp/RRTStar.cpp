@@ -570,16 +570,16 @@ void RRTStar::run()
     bool move_robot = false;
     while (v_bot != v_goal)
     {
+        if (obstacleHasChanged())
+        {
+            std::vector<Obstacle *> currentVisibleObstacle = getSensorData();
+            updateObstacles(shrinkingBallRadius(), currentVisibleObstacle);
+        }
         if (this->isPathBroken())
         {
             this->resetTree();
             this->processRRTStar();
             move_robot = true;
-        }
-        if (obstacleHasChanged())
-        {
-            std::vector<Obstacle *> currentVisibleObstacle = getSensorData();
-            updateObstacles(shrinkingBallRadius(), currentVisibleObstacle);
         }
         if (move_robot && v_bot->lmc < std::numeric_limits<double>::infinity() && v_bot != v_goal)
         {
@@ -704,8 +704,8 @@ bool RRTStar::isPathBroken()
     if (v_bot == v_goal)
         return false;
 
-    Node *current = v_bot;
-    while (current != nullptr && current != v_goal)
+    Node *current = v_goal;
+    while (current != nullptr && current != v_bot)
     {
         if (current->parent == nullptr || current->lmc >= std::numeric_limits<double>::infinity())
         {
@@ -718,7 +718,7 @@ bool RRTStar::isPathBroken()
 
         current = current->parent;
     }
-    return current != v_goal;
+    return current != v_bot;
 }
 
 void RRTStar::resetTree()

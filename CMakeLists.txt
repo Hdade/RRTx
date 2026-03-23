@@ -21,6 +21,7 @@ FetchContent_MakeAvailable(pybind11)
 set(SOURCE_FILES
     main.cpp
     utils_cpp/RRTx.cpp
+    utils_cpp/RRTStar.cpp
 )
 
 include_directories(utils_cpp/header)

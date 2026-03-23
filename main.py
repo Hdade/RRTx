@@ -9,6 +9,7 @@ Rectangle = rrtx_cpp.Rectangle
 Circle = rrtx_cpp.Circle
 HolonomicModel = rrtx_cpp.HolonomicModel
 RRTx = rrtx_cpp.RRTx
+RRTStar = rrtx_cpp.RRTStar
 
 COLOR_BG = (20, 20, 30)
 COLOR_OBSTACLE = (50, 50, 60)
@@ -29,11 +30,12 @@ STATE_TEST_MODEL = 3
 STATE_RUNNING = 4
 
 class Visualizer:
-    def __init__(self, model_type="gan"):
+    def __init__(self, model_type="gan", algo_type="rrtx"):
         pygame.init()
         self.screen = pygame.display.set_mode((Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
         self.model_type = model_type.upper()
-        pygame.display.set_caption(f"RRTX C++ Backend Interactive Planner - {self.model_type} Model")
+        self.algo_type = algo_type.lower()
+        pygame.display.set_caption(f"{self.algo_type.upper()} C++ Interactive Planner - {self.model_type} Model")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("Consolas", 14)
         self.large_font = pygame.font.SysFont("Consolas", 20, bold=True)
@@ -49,13 +51,12 @@ class Visualizer:
         self.start_node = None
         self.goal_node = None
         self.model = None
-        self.rrtx = None
+        self.planner = None # Đổi tên từ rrtx thành planner để dùng chung
         
-        # --- TÁCH BIỆT THỜI GIAN (FIX LỖI ĐỨNG YÊN) ---
-        self.obstacle_move_delay = 50  # Chướng ngại vật cập nhật mỗi 50ms
+        self.obstacle_move_delay = 50 
         self.last_obs_move_time = 0
         
-        self.robot_move_delay = 100    # Robot bước đi mỗi 100ms (cho C++ kịp tính toán)
+        self.robot_move_delay = 100 
         self.last_robot_move_time = 0
         
         self.show_tree = True
@@ -89,10 +90,10 @@ class Visualizer:
             
         self.pending_model_request = False
         self.sampling_map_updated = False
-        self.initial_map_loaded = False # Cờ quan trọng để chống giật
+        self.initial_map_loaded = False 
         self.heuristic_debug_surface = None
         
-        self.load_scenario("annotations1.json")
+        self.load_scenario("annotations.json")
 
     def get_rect_vertices(self, x, y, w, h, angle):
         w2, h2 = w / 2.0, h / 2.0
@@ -185,14 +186,14 @@ class Visualizer:
             safe_flat_map = np.ascontiguousarray(flat_map.flatten(), dtype=np.float64)
             self.heuristic_debug_surface = self.create_heatmap_surface_from_data(flat_map)
             
-            if self.rrtx:
-                self.rrtx.update_sampling_distribution(safe_flat_map, Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT)
-                self.rrtx.update_node_heuristics()
+            if self.planner:
+                self.planner.update_sampling_distribution(safe_flat_map, Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT)
+                self.planner.update_node_heuristics()
                 
             print(f">>> [Main] Received Heatmap from {self.model_type} Worker!")
             self.pending_model_request = False
             self.sampling_map_updated = True
-            self.initial_map_loaded = True # Đã nhận được map đầu tiên
+            self.initial_map_loaded = True 
         except queue.Empty:
             pass
         except Exception as e:
@@ -217,8 +218,8 @@ class Visualizer:
         points_surf.fill((255, 255, 255)) 
         
         start_pos = None
-        if self.rrtx and hasattr(self.rrtx, 'v_bot') and self.rrtx.v_bot is not None:
-            start_pos = (int(self.rrtx.v_bot.pos[0]), int(self.rrtx.v_bot.pos[1]))
+        if self.planner and hasattr(self.planner, 'v_bot') and self.planner.v_bot is not None:
+            start_pos = (int(self.planner.v_bot.pos[0]), int(self.planner.v_bot.pos[1]))
         elif self.start_node:
             start_pos = (int(self.start_node.pos[0]), int(self.start_node.pos[1]))
 
@@ -236,9 +237,15 @@ class Visualizer:
         print(f">>> [Main] Sent request to {self.model_type} Worker...")
 
     def init_algorithm(self):
-        print(">>> Initializing RRTx Algorithm...")
+        print(f">>> Initializing {self.algo_type.upper()} Algorithm...")
         self.model = HolonomicModel(self.obstacles)
-        self.rrtx = RRTx(self.start_node, self.goal_node, self.model)
+        
+        # --- CHỌN THUẬT TOÁN DỰA TRÊN ARGUMENT ---
+        if self.algo_type == "rrtstar":
+            self.planner = RRTStar(self.start_node, self.goal_node, self.model)
+        else: # Mặc định là RRTx
+            self.planner = RRTx(self.start_node, self.goal_node, self.model)
+            
         self.update_model_heuristic()
 
     def is_point_inside_polygon(self, point, vertices):
@@ -262,9 +269,9 @@ class Visualizer:
             self._gc_protector.append(obs_cpp)
             self.py_obstacles.append({'shape': 'rectangle', 'x': mx, 'y': my, 'w': w, 'h': h, 'angle': angle, 'type': 'static', 'cpp_ref': obs_cpp})
             self.obstacles.append(obs_cpp)
-            if self.current_state == STATE_RUNNING and self.rrtx:
-                r = self.rrtx.shrinking_ball_radius()
-                self.rrtx.update_obstacles(r, self.obstacles)
+            if self.current_state == STATE_RUNNING and self.planner:
+                r = self.planner.shrinking_ball_radius()
+                self.planner.update_obstacles(r, self.obstacles)
                 self.sampling_map_updated = False 
         else:
             for i in range(len(self.py_obstacles) - 1, -1, -1):
@@ -279,9 +286,9 @@ class Visualizer:
                 if inside:
                     self.py_obstacles.pop(i)
                     self.obstacles = [p['cpp_ref'] for p in self.py_obstacles]
-                    if self.current_state == STATE_RUNNING and self.rrtx:
-                        r = self.rrtx.shrinking_ball_radius()
-                        self.rrtx.update_obstacles(r, self.obstacles)
+                    if self.current_state == STATE_RUNNING and self.planner:
+                        r = self.planner.shrinking_ball_radius()
+                        self.planner.update_obstacles(r, self.obstacles)
                         self.sampling_map_updated = False
                     break
 
@@ -319,45 +326,33 @@ class Visualizer:
                         self.update_model_heuristic()
 
             self.check_model_result()
-            
-            # Cờ cho phép chạy mượt mà ngay sau khi map đầu tiên được nạp
             is_model_ready = (not self.use_heuristic) or self.initial_map_loaded
 
-            if self.current_state == STATE_RUNNING and self.rrtx:
+            if self.current_state == STATE_RUNNING and self.planner:
                 if not self.sampling_map_updated: self.update_model_heuristic()
 
                 if is_model_ready and not self.paused:
                     current_time = pygame.time.get_ticks()
                     
-                    # 1. CẬP NHẬT CHƯỚNG NGẠI VẬT (Tần số nhanh)
                     if current_time - self.last_obs_move_time > self.obstacle_move_delay:
                         self.last_obs_move_time = current_time
                         needs_cpp_update = False
                         new_obstacles_cpp = []
 
-                        # Lấy vị trí hiện tại của robot
                         bot_pos = None
-                        if hasattr(self.rrtx, 'v_bot') and self.rrtx.v_bot:
-                            bot_pos = self.rrtx.v_bot.pos
+                        if hasattr(self.planner, 'v_bot') and self.planner.v_bot:
+                            bot_pos = self.planner.v_bot.pos
                         
                         for py_obs in self.py_obstacles:
-                            # 1. KIỂM TRA LOGIC PROXIMITY
                             if py_obs['type'] == 'proximity' and bot_pos and not py_obs.get('triggered', False):
                                 dist = math.hypot(py_obs['x'] - bot_pos[0], py_obs['y'] - bot_pos[1])
-                                
                                 if dist < py_obs['trigger_dist']:
-                                    # Chuyển đổi trạng thái
-                                    if py_obs['behavior'] == 'appear_when_near':
-                                        py_obs['active'] = True
-                                    else: # disappear_when_near
-                                        py_obs['active'] = False
-
+                                    if py_obs['behavior'] == 'appear_when_near': py_obs['active'] = True
+                                    else: py_obs['active'] = False
                                     py_obs['triggered'] = True
                                     needs_cpp_update = True
 
-                            # 2. CHỈ ĐƯA VÀO C++ NẾU ĐANG ACTIVE (Đây là mấu chốt)
                             if py_obs.get('active', True):
-                                # Xử lý di chuyển cho dynamic
                                 if py_obs['type'] == 'dynamic':
                                     needs_cpp_update = True
                                     py_obs['x'] += py_obs['velocity'][0]
@@ -375,21 +370,20 @@ class Visualizer:
                                     self._gc_protector.append(new_cpp)
                                     py_obs['cpp_ref'] = new_cpp
                                 
-                                # Đưa vào danh sách gửi xuống thuật toán
                                 new_obstacles_cpp.append(py_obs['cpp_ref'])
 
                         if needs_cpp_update:
                             self.obstacles = new_obstacles_cpp
-                            r = self.rrtx.shrinking_ball_radius()
-                            self.rrtx.update_obstacles(r, self.obstacles)
+                            r = self.planner.shrinking_ball_radius()
+                            self.planner.update_obstacles(r, self.obstacles)
                             self.sampling_map_updated = False
                     
                     should_move_robot = False
                     reached_goal = False
-                    if hasattr(self.rrtx, 'v_bot') and self.rrtx.v_bot is not None and self.goal_node is not None:
+                    if hasattr(self.planner, 'v_bot') and self.planner.v_bot is not None and self.goal_node is not None:
                         dist_to_goal = math.hypot(
-                            self.rrtx.v_bot.pos[0] - self.goal_node.pos[0], 
-                            self.rrtx.v_bot.pos[1] - self.goal_node.pos[1]
+                            self.planner.v_bot.pos[0] - self.goal_node.pos[0], 
+                            self.planner.v_bot.pos[1] - self.goal_node.pos[1]
                         )
                         if dist_to_goal < 5.0:
                             reached_goal = True
@@ -402,8 +396,28 @@ class Visualizer:
                             if self.current_state == STATE_RUNNING:
                                 print("\n>>> [Success] Robot đã chạm đích an toàn!")
                                 self.current_state = STATE_TEST_MODEL
-                                
-                    self.rrtx.step(move_robot=should_move_robot)
+                    
+                    # --- GỌI THUẬT TOÁN TƯƠNG ỨNG ---            
+                    if self.algo_type == "rrtx":
+                        self.planner.step(move_robot=should_move_robot)
+                    elif self.algo_type == "rrtstar":
+                        # RRT*: Kiểm tra đường có bị chặn không, nếu có thì xoá và tính lại
+                        if self.planner.is_path_broken():
+                            print(">>> [RRT*] Đường đi bị đứt! Reset lại cây từ vị trí robot...")
+                            self.planner.reset_tree()
+                            self.planner.process_rrt_star()
+                        
+                        # Di chuyển logic riêng do v_bot là root và goal có parent
+                        if should_move_robot and not reached_goal:
+                            if dist_to_goal <= Config.GOAL_RADIUS:
+                                self.planner.v_bot = self.goal_node
+                            else:
+                                # Dò ngược từ đích về bot để tìm node liền kề v_bot
+                                curr = self.goal_node
+                                if curr.parent is not None: # Nếu có đường về đích
+                                    while curr.parent is not None and curr.parent != self.planner.v_bot:
+                                        curr = curr.parent
+                                    self.planner.v_bot = curr
 
             self.screen.fill(COLOR_BG)
 
@@ -424,25 +438,35 @@ class Visualizer:
             if self.start_node: pygame.draw.circle(self.screen, COLOR_START, (int(self.start_node.pos[0]), int(self.start_node.pos[1])), 8)
             if self.goal_node: pygame.draw.circle(self.screen, COLOR_GOAL, (int(self.goal_node.pos[0]), int(self.goal_node.pos[1])), 8)
 
-            if self.current_state == STATE_RUNNING and self.rrtx and is_model_ready:
+            if self.current_state == STATE_RUNNING and self.planner and is_model_ready:
                 if self.show_tree:
-                    for node in self.rrtx.V:
+                    for node in self.planner.V:
                         if node.parent:
                             s, e = (int(node.pos[0]), int(node.pos[1])), (int(node.parent.pos[0]), int(node.parent.pos[1]))
                             if node.heuristic_val > 0.4: pygame.draw.line(self.screen, COLOR_HEURISTIC_TREE, s, e, 2)
                             else: pygame.draw.line(self.screen, COLOR_TREE, s, e, 1)
                                 
-                if hasattr(self.rrtx, 'v_bot') and self.rrtx.v_bot is not None:
-                    bot_pos = (int(self.rrtx.v_bot.pos[0]), int(self.rrtx.v_bot.pos[1]))
+                if hasattr(self.planner, 'v_bot') and self.planner.v_bot is not None:
+                    bot_pos = (int(self.planner.v_bot.pos[0]), int(self.planner.v_bot.pos[1]))
                     pygame.draw.circle(self.screen, COLOR_ROBOT, bot_pos, 8)
                     
+                    # --- VẼ PATH TÙY THEO THUẬT TOÁN ---
                     path = []
-                    curr = self.rrtx.v_bot
-                    while curr and curr.parent:
-                        path.append((curr.pos[0], curr.pos[1]))
-                        curr = curr.parent
-                        if curr == self.goal_node: break
-                    path.append((curr.pos[0], curr.pos[1]))
+                    if self.algo_type == "rrtx":
+                        curr = self.planner.v_bot
+                        while curr and curr.parent:
+                            path.append((curr.pos[0], curr.pos[1]))
+                            curr = curr.parent
+                            if curr == self.goal_node: break
+                        if curr: path.append((curr.pos[0], curr.pos[1]))
+                    elif self.algo_type == "rrtstar":
+                        curr = self.goal_node
+                        if curr.parent is not None: # Nếu đã tìm được đường
+                            while curr and curr.parent:
+                                path.append((curr.pos[0], curr.pos[1]))
+                                curr = curr.parent
+                                if curr == self.planner.v_bot: break
+                            if curr: path.append((curr.pos[0], curr.pos[1]))
                     
                     if len(path) > 1: pygame.draw.lines(self.screen, COLOR_PATH, False, path, 3)
 
@@ -464,22 +488,28 @@ class Visualizer:
             if not is_ready:
                 status_text, instruct_text = "MODE: INITIALIZING AI...", "Waiting for Model to load and map heuristics..."
             else:
-                cost = self.rrtx.v_bot.lmc if (hasattr(self.rrtx, 'v_bot') and self.rrtx.v_bot is not None) else 0
+                # Đọc chi phí tùy theo thuật toán
+                if self.algo_type == "rrtx":
+                    cost = self.planner.v_bot.lmc if (hasattr(self.planner, 'v_bot') and self.planner.v_bot is not None) else float('inf')
+                else: # RRT* lưu cost ở goal node do v_bot là root
+                    cost = self.goal_node.lmc if self.goal_node else float('inf')
+                    
                 cost_str = f"{cost:.2f}" if cost < float('inf') else "Inf"
-                status_text, instruct_text = "MODE: RRTx RUNNING", f"Cost: {cost_str} | [L-Click]: Add Obs | [SPACE]: Pause"
+                status_text, instruct_text = f"MODE: {self.algo_type.upper()} RUNNING", f"Cost: {cost_str} | [L-Click]: Add Obs | [SPACE]: Pause"
 
         pygame.draw.rect(self.screen, (0,0,0), (0, 0, Config.SCREEN_WIDTH, 60))
         self.screen.blit(self.large_font.render(status_text, True, COLOR_ORPHAN), (10, 5))
         self.screen.blit(self.font.render(instruct_text, True, COLOR_TEXT), (10, 35))
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="RRTx Path Planning")
-    parser.add_argument("--model", type=str, choices=["gan", "sfd", "none"], default="none")
+    parser = argparse.ArgumentParser(description="Path Planning Visualization")
+    parser.add_argument("--model", type=str, choices=["gan", "sfd", "none"], default="none", help="Mô hình dùng để sinh Heuristic (gan, sfd, none)")
+    parser.add_argument("--algo", type=str, choices=["rrtx", "rrtstar"], default="rrtx", help="Thuật toán chạy (rrtx hoặc rrtstar)")
     args = parser.parse_args()
 
     viz = None
     try:
-        viz = Visualizer(model_type=args.model)
+        viz = Visualizer(model_type=args.model, algo_type=args.algo)
         viz.run()
     except Exception as e:
         print(f"\n>>> [Main] Chương trình văng lỗi: {e}")
