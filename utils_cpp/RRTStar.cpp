@@ -625,7 +625,7 @@ bool RRTStar::processRRTStar()
             if (std::find(V.begin(), V.end(), v) != V.end())
             {
                 rewireNeighbors(v, r);
-                reduceInconsistency(r);
+                // reduceInconsistency(r);
             }
         }
         else

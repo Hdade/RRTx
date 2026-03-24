@@ -25,6 +25,7 @@ Các thư viện Python chính:
 ## Tạo môi trường ảo
 
 ### Windows (PowerShell)
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -32,6 +33,7 @@ python -m pip install -U pip
 ```
 
 ### Linux/macOS
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -39,6 +41,7 @@ python -m pip install -U pip
 ```
 
 ### Cài thư viện Python
+
 ```bash
 pip install numpy pygame opencv-python torch torchvision pillow tqdm
 ```
@@ -48,6 +51,7 @@ pip install numpy pygame opencv-python torch torchvision pillow tqdm
 ## Build C++ core (pybind11)
 
 ### CMake build (cross-platform)
+
 ```bash
 cmake -S . -B build
 cmake --build build --config Release
@@ -59,11 +63,13 @@ Sau khi build, copy module `rrtx_cpp` về thư mục gốc của repo:
 - Windows: copy file dạng `rrtx_cpp*.pyd`
 
 Ví dụ (Linux/macOS):
+
 ```bash
 cp build/rrtx_cpp*.so .
 ```
 
 Ví dụ (Windows PowerShell):
+
 ```powershell
 Copy-Item build\Release\rrtx_cpp*.pyd .
 ```
@@ -73,18 +79,23 @@ Copy-Item build\Release\rrtx_cpp*.pyd .
 ## Chạy demo
 
 ### Single-thread
+
 ```bash
 chmod +x single_thread_run.sh
 ./single_thread_run.sh
 ```
 
 ### Multi-thread
+
 ```bash
-chmod +x run.sh
-./run.sh
+cmake -S . -B build
+cmake --build build --config Release --parallel 4
+Copy-Item build\Release\rrtx_cpp*.pyd
+python main.py --algo rrtx --model gan
 ```
 
 ### Pure python
+
 ```bash
 python ./oldRRTx/main.py
 ```
@@ -95,4 +106,4 @@ python ./oldRRTx/main.py
 
 - `oldRRTx/` là bản Python thuần chạy toàn bộ thuật toán chậm.
 - Bản hiện tại tách phần core sang C++ để tăng tốc, Python chỉ giữ phần hiển thị + logic điều khiển.
-- [UPDATE]: Ở trong ```run.sh``` thì có cho phép 2 option là sfd và gan. Chỉ cần mở ```run.sh``` để edit lại chỗ ```--model``` là ```gan``` hoặc ```sfd```
+- [UPDATE]: Ở trong `run.sh` thì có cho phép 2 option là sfd và gan. Chỉ cần mở `run.sh` để edit lại chỗ `--model` là `gan` hoặc `sfd`
