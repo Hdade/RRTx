@@ -6,7 +6,7 @@ namespace config
     // Simulation Settings
     static constexpr int SCREEN_WIDTH = 800;
     static constexpr int SCREEN_HEIGHT = 600;
-    static constexpr int FPS = 10;
+    static constexpr int FPS = 60;
 
     // RRTX Hyperparameters
     static constexpr int MAX_ITER = 10000;

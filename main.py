@@ -1,5 +1,5 @@
 import numpy as np
-import pygame, sys, cv2, rrtx_cpp, multiprocessing, queue, argparse, json, math
+import pygame, sys, cv2, rrtx_cpp, multiprocessing, queue, argparse, json, math, csv, os, time
 from gan_worker import gan_worker_loop
 from sfd_worker import sfd_worker_loop
 
@@ -239,6 +239,11 @@ class Visualizer:
     def init_algorithm(self):
         print(f">>> Initializing {self.algo_type.upper()} Algorithm...")
         self.model = HolonomicModel(self.obstacles)
+        self.actual_path_cost = 0.0
+
+        self.inference_times = []
+        self.planning_times = []
+        self.model_request_time = 0
         
         # --- CHỌN THUẬT TOÁN DỰA TRÊN ARGUMENT ---
         if self.algo_type == "rrtstar":
@@ -329,7 +334,7 @@ class Visualizer:
             is_model_ready = (not self.use_heuristic) or self.initial_map_loaded
 
             if self.current_state == STATE_RUNNING and self.planner:
-                if not self.sampling_map_updated: self.update_model_heuristic()
+                if not self.sampling_map_updated and self.algo_type == 'rrtx': self.update_model_heuristic()
 
                 if is_model_ready and not self.paused:
                     current_time = pygame.time.get_ticks()
@@ -396,6 +401,25 @@ class Visualizer:
                             if self.current_state == STATE_RUNNING:
                                 print("\n>>> [Success] Robot đã chạm đích an toàn!")
                                 self.current_state = STATE_TEST_MODEL
+
+                                csv_file = "metrics.csv"
+                                file_exists = os.path.isfile(csv_file)
+                                with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
+                                    writer = csv.writer(f)
+                                    if not file_exists:
+                                        writer.writerow(["Model", "Algorithm", "Path Cost", "Max Nodes", "Total Iterations", "Avg Inference Time (s)", "Avg Planning Time (s)"])
+                                    
+                                    max_nodes = getattr(self.planner, "max_nodes", len(self.planner.V))
+                                    total_iters = getattr(self.planner, "total_iterations", 0)
+                                    avg_inference = sum(self.inference_times) / len(self.inference_times) if self.inference_times else 0.0
+                                    avg_planning = sum(self.planning_times) / len(self.planning_times) if self.planning_times else 0.0
+                                    
+                                    writer.writerow([
+                                        self.model_type, self.algo_type, 
+                                        round(self.actual_path_cost, 2), max_nodes, total_iters, 
+                                        round(avg_inference, 4), round(avg_planning, 4)
+                                    ])
+                                print(f">>> [Metrics] Đã lưu thông số vào {csv_file}")
                     
                     # --- GỌI THUẬT TOÁN TƯƠNG ỨNG ---            
                     if self.algo_type == "rrtx":
@@ -404,8 +428,13 @@ class Visualizer:
                         # RRT*: Kiểm tra đường có bị chặn không, nếu có thì xoá và tính lại
                         if self.planner.is_path_broken():
                             print(">>> [RRT*] Đường đi bị đứt! Reset lại cây từ vị trí robot...")
+                            self.update_model_heuristic()
+                            self.check_model_result()
                             self.planner.reset_tree()
+                            t0 = time.perf_counter()
                             self.planner.process_rrt_star()
+                            t1 = time.perf_counter()
+                            self.planning_times.append(t1 - t0)
                         
                         # Di chuyển logic riêng do v_bot là root và goal có parent
                         if should_move_robot and not reached_goal:
@@ -417,6 +446,9 @@ class Visualizer:
                                 if curr.parent is not None: # Nếu có đường về đích
                                     while curr.parent is not None and curr.parent != self.planner.v_bot:
                                         curr = curr.parent
+                                    step_dist = math.hypot(self.planner.v_bot.pos[0] - curr.pos[0], 
+                                                           self.planner.v_bot.pos[1] - curr.pos[1])
+                                    self.actual_path_cost += step_dist
                                     self.planner.v_bot = curr
 
             self.screen.fill(COLOR_BG)
@@ -472,7 +504,7 @@ class Visualizer:
 
             self.draw_ui_overlay(is_model_ready if self.current_state == STATE_RUNNING else True)
             pygame.display.flip()
-            self.clock.tick(60)
+            self.clock.tick(Config.FPS)
 
     def draw_ui_overlay(self, is_ready=True):
         status_text, instruct_text = "", ""

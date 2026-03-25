@@ -602,6 +602,7 @@ bool RRTStar::processRRTStar()
 
     for (int i = 0; i < config::MAX_ITER; ++i)
     {
+        this->total_iterations++;
         double r = shrinkingBallRadius();
         Node *v = randomNode();
         Node *v_nearest = nearestNode(v);
@@ -667,6 +668,11 @@ bool RRTStar::processRRTStar()
                 break;
             }
         }
+    }
+
+    if (V.size() > this->max_nodes)
+    {
+        this->max_nodes = V.size();
     }
 
     return v_goal->lmc < std::numeric_limits<double>::infinity();

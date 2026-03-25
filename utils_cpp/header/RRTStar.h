@@ -27,6 +27,8 @@ private:
     double getHeuristicProbability(double x, double y);
 
 public:
+    int total_iterations = 0;
+    int max_nodes = 0;
     Node *v_bot;
     std::vector<Node *> V;
     IndexedHeap Q;

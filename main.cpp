@@ -79,6 +79,8 @@ PYBIND11_MODULE(rrtx_cpp, m)
 
     py::class_<RRTStar>(m, "RRTStar")
         .def(py::init<Node *, Node *, HolonomicModel *>(), py::keep_alive<1, 2>(), py::keep_alive<1, 3>(), py::keep_alive<1, 4>())
+        .def_readwrite("total_iterations", &RRTStar::total_iterations)
+        .def_readwrite("max_nodes", &RRTStar::max_nodes)
         .def_readwrite("v_bot", &RRTStar::v_bot, py::return_value_policy::reference)
         .def_readwrite("V", &RRTStar::V, py::return_value_policy::reference)
         .def_readwrite("Orphans", &RRTStar::Orphans, py::return_value_policy::reference)

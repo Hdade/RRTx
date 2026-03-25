@@ -107,3 +107,4 @@ python ./oldRRTx/main.py
 - `oldRRTx/` là bản Python thuần chạy toàn bộ thuật toán chậm.
 - Bản hiện tại tách phần core sang C++ để tăng tốc, Python chỉ giữ phần hiển thị + logic điều khiển.
 - [UPDATE]: Ở trong `run.sh` thì có cho phép 2 option là sfd và gan. Chỉ cần mở `run.sh` để edit lại chỗ `--model` là `gan` hoặc `sfd`
+- Ở phần `algo` chỉ thuật toán người dùng muốn dùng để chạy: `rrtstar` chỉ RRT\* còn `rrtx` chỉ RRTX

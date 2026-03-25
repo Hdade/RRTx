@@ -595,40 +595,39 @@ bool RRTx::step(bool move_robot)
     {
         v_bot = updateRobot();
     }
-
-    const int SAMPLES_PER_FRAME = 50;
-    for (int i = 0; i < SAMPLES_PER_FRAME; ++i)
+    Node *v = randomNode();
+    if (d(v, v_start) < config::GOAL_RADIUS)
     {
-        Node *v = randomNode();
-        Node *v_nearest = nearestNode(v);
-        if (v_nearest == nullptr)
-        {
-            delete v;
-            continue;
-        }
-
-        if (d(v, v_nearest) > config::DELTA)
-        {
-            Node *v_saturated = saturate(v, v_nearest);
-            delete v;
-            v = v_saturated;
-        }
-
-        if (!isInsideObstacle(v))
-        {
-            extend(v, r);
-            if (std::find(V.begin(), V.end(), v) != V.end())
-            {
-                rewireNeighbors(v, r);
-                reduceInconsistency(r);
-            }
-        }
-        else
-        {
-            delete v;
-        }
+        delete v;
+        v = new Node(v_start->pos.x, v_start->pos.y);
+    }
+    Node *v_nearest = nearestNode(v);
+    if (v_nearest == nullptr)
+    {
+        delete v;
+        return false;
     }
 
+    if (d(v, v_nearest) > config::DELTA)
+    {
+        Node *v_saturated = saturate(v, v_nearest);
+        delete v;
+        v = v_saturated;
+    }
+
+    if (!isInsideObstacle(v))
+    {
+        extend(v, r);
+        if (std::find(V.begin(), V.end(), v) != V.end())
+        {
+            rewireNeighbors(v, r);
+            reduceInconsistency(r);
+        }
+    }
+    else
+    {
+        delete v;
+    }
     v_bot->parent = nullptr;
     v_bot->lmc = std::numeric_limits<double>::infinity();
     std::vector<Node *> potential_parents = near(v_bot, r);
