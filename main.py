@@ -1,7 +1,10 @@
 import numpy as np
 import pygame, sys, cv2, rrtx_cpp, multiprocessing, queue, argparse, json, math, csv, os, time
 from gan_worker import gan_worker_loop
-from sfd_worker import sfd_worker_loop
+from sfd_worker import sfd_worker_loop, SFDInference
+from Hybrid_ViT_GAN.inferenceHelper import GANInference
+import torch
+from time import perf_counter
 
 Config = rrtx_cpp.config
 Node = rrtx_cpp.Node
@@ -41,59 +44,73 @@ class Visualizer:
         self.large_font = pygame.font.SysFont("Consolas", 20, bold=True)
 
         self.current_state = STATE_SETUP_OBSTACLES
-        
-        # Bảo vệ RAM khỏi Garbage Collector
         self._gc_protector = [] 
-
         self.py_obstacles = [] 
         self.obstacles = []
         
         self.start_node = None
         self.goal_node = None
-        self.model = None
-        self.planner = None # Đổi tên từ rrtx thành planner để dùng chung
+        self.planner = None
         
         self.obstacle_move_delay = 50 
         self.last_obs_move_time = 0
-        
         self.robot_move_delay = 100 
         self.last_robot_move_time = 0
         
         self.show_tree = True
         self.paused = False
+
+        # --- 1. KHỞI TẠO CÁC BIẾN QUẢN LÝ MODEL ---
         self.use_heuristic = True
-
-        self.model_input_queue = multiprocessing.Queue()
-        self.model_output_queue = multiprocessing.Queue()
+        self.ai_model = None
+        self.model_input_queue = None
+        self.model_output_queue = None
+        self.worker_process = None
         
-        if self.model_type == "GAN":
-            print(">>> [Main] Starting GAN Worker Process...")
-            checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_40.pth"
-            target_func = gan_worker_loop
-            target_args = (self.model_input_queue, self.model_output_queue, checkpoint_path, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
-        elif self.model_type == "SFD":
-            print(">>> [Main] Starting SFD Worker Process...")
-            checkpoint_path = "checkpoints/SFD_checkpoints"
-            target_func = sfd_worker_loop
-            target_args = (self.model_input_queue, self.model_output_queue, checkpoint_path, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
-        else:
-            self.use_heuristic = False
-            self.model_input_queue = None
-            self.model_output_queue = None
-
-        if self.use_heuristic:
-            self.worker_process = multiprocessing.Process(target=target_func, args=target_args)
-            self.worker_process.daemon = True
-            self.worker_process.start()
-        else:
-            self.worker_process = None
-            
         self.pending_model_request = False
         self.sampling_map_updated = False
         self.initial_map_loaded = False 
         self.heuristic_debug_surface = None
-        
-        self.load_scenario("annotations.json")
+
+        # --- 2. SETUP MODEL DỰA TRÊN THUẬT TOÁN ---
+        if self.model_type in ["GAN", "SFD"]:
+            if self.algo_type == "rrtstar":
+                # RRT*: Chạy Inference trực tiếp (Không dùng Queue)
+                self.device = 'cpu'
+                if torch.cuda.is_available(): self.device = 'cuda'
+                elif torch.backends.mps.is_available(): self.device = 'mps'
+                
+                print(f">>> [Main] Initializing {self.model_type} directly on {self.device} for RRT*...")
+                if self.model_type == "GAN":
+                    checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_25.pth" # <--- Khớp với log của bạn
+                    self.ai_model = GANInference(checkpoint_path, device=self.device)
+                elif self.model_type == "SFD":
+                    checkpoint_path = "checkpoints/SFD_checkpoints/best_model.pth"
+                    self.ai_model = SFDInference(checkpoint_path, device=self.device)
+            
+            elif self.algo_type == "rrtx":
+                # RRTx: Chạy Multiprocessing Queue
+                self.model_input_queue = multiprocessing.Queue()
+                self.model_output_queue = multiprocessing.Queue()
+                
+                if self.model_type == "GAN":
+                    print(">>> [Main] Starting GAN Worker Process for RRTx...")
+                    checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_25.pth" # <--- Khớp với log của bạn
+                    target_func = gan_worker_loop
+                elif self.model_type == "SFD":
+                    print(">>> [Main] Starting SFD Worker Process for RRTx...")
+                    checkpoint_path = "checkpoints/SFD_checkpoints/best_model.pth" 
+                    target_func = sfd_worker_loop
+                
+                target_args = (self.model_input_queue, self.model_output_queue, checkpoint_path, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
+                self.worker_process = multiprocessing.Process(target=target_func, args=target_args)
+                self.worker_process.daemon = True
+                self.worker_process.start()
+        else:
+            self.use_heuristic = False
+            
+        # --- 3. LOAD MAP VÀ TẠO THUẬT TOÁN ---
+        self.load_scenario("annotations1.json")
 
     def get_rect_vertices(self, x, y, w, h, angle):
         w2, h2 = w / 2.0, h / 2.0
@@ -180,9 +197,15 @@ class Visualizer:
         return heatmap_surf
 
     def check_model_result(self):
-        if not self.use_heuristic: return
+        if not self.use_heuristic or self.algo_type == "rrtstar": return
         try:
             flat_map = self.model_output_queue.get_nowait()
+            inference_duration = time.perf_counter() - self.model_request_time
+            if getattr(self, 'is_first_inference', True):
+                self.is_first_inference = False
+                print(f">>> [Main] Warm-up inference time: {inference_duration:.4f}s (Ignored)")
+            else:
+                self.inference_times.append(inference_duration)
             safe_flat_map = np.ascontiguousarray(flat_map.flatten(), dtype=np.float64)
             self.heuristic_debug_surface = self.create_heatmap_surface_from_data(flat_map)
             
@@ -232,9 +255,44 @@ class Visualizer:
     def update_model_heuristic(self):
         if not self.use_heuristic or self.pending_model_request: return
         map_img, points_img = self.get_model_input_from_pygame()
+        self.model_request_time = time.perf_counter()
         self.model_input_queue.put((map_img, points_img))
         self.pending_model_request = True
         print(f">>> [Main] Sent request to {self.model_type} Worker...")
+
+    def run_direct_inference(self):
+        if not self.use_heuristic or self.ai_model is None:
+            return
+            
+        map_img, points_img = self.get_model_input_from_pygame()
+        t0 = perf_counter() # BẮT ĐẦU ĐO THỜI GIAN
+        
+        if self.model_type == "GAN":
+            heatmap_224 = self.ai_model.predict(map_img, points_img)
+            heatmap_resized = cv2.resize(heatmap_224, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
+            flat_map = heatmap_resized.flatten()
+        elif self.model_type == "SFD":
+            heatmap_128 = self.ai_model.predict(map_img, points_img)
+            heatmap_resized = cv2.resize(heatmap_128, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
+            flat_map = heatmap_resized.flatten()
+           
+        inference_duration = perf_counter() - t0
+        if getattr(self, 'is_first_inference', True):
+            self.is_first_inference = False
+            print(f">>> [Main] Warm-up inference time: {inference_duration:.4f}s (Ignored)")
+        else:
+            self.inference_times.append(inference_duration)
+            
+        safe_flat_map = np.ascontiguousarray(flat_map, dtype=np.float64)
+        self.heuristic_debug_surface = self.create_heatmap_surface_from_data(safe_flat_map)
+        
+        if self.planner:
+            self.planner.update_sampling_distribution(safe_flat_map, Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT)
+            self.planner.update_node_heuristics()
+            
+        print(f">>> [Main] Direct Inference Complete! (Map Updated)")
+        self.sampling_map_updated = True
+        self.initial_map_loaded = True
 
     def init_algorithm(self):
         print(f">>> Initializing {self.algo_type.upper()} Algorithm...")
@@ -244,14 +302,16 @@ class Visualizer:
         self.inference_times = []
         self.planning_times = []
         self.model_request_time = 0
+        self.is_first_inference = True
         
         # --- CHỌN THUẬT TOÁN DỰA TRÊN ARGUMENT ---
         if self.algo_type == "rrtstar":
             self.planner = RRTStar(self.start_node, self.goal_node, self.model)
-        else: # Mặc định là RRTx
+            self.rrtstar_first_run_done = False
+            self.run_direct_inference() 
+        else:
             self.planner = RRTx(self.start_node, self.goal_node, self.model)
-            
-        self.update_model_heuristic()
+            self.update_model_heuristic()
 
     def is_point_inside_polygon(self, point, vertices):
         x, y = point
@@ -428,8 +488,7 @@ class Visualizer:
                         # RRT*: Kiểm tra đường có bị chặn không, nếu có thì xoá và tính lại
                         if self.planner.is_path_broken():
                             print(">>> [RRT*] Đường đi bị đứt! Reset lại cây từ vị trí robot...")
-                            self.update_model_heuristic()
-                            self.check_model_result()
+                            self.run_direct_inference()
                             self.planner.reset_tree()
                             t0 = time.perf_counter()
                             self.planner.process_rrt_star()

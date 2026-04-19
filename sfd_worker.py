@@ -175,3 +175,61 @@ def sfd_worker_loop(input_queue, output_queue, checkpoint_dir, config_screen_dim
     except Exception as e:
         print(f"{ERROR}[SFD Worker] CRITICAL ERROR: {e}{RESET}")
         traceback.print_exc()
+
+
+class SFDInference:
+    def __init__(self, checkpoint_path, device='cpu', num_steps=4):
+        self.device = device
+        self.img_size = 128
+        self.num_steps = num_steps
+        
+        print(f">>> [SFD] Initializing DiffUNet model on {self.device}...")
+        
+        # 1. Khởi tạo cấu trúc Model từ deepinv (v0.3.6)
+        # Lưu ý: Cấu trúc này cần khớp với file config lúc bạn train. 
+        self.model = deepinv.models.DiffUNet(in_channels=6, out_channels=3).to(self.device)
+        
+        # 2. Load trọng số (Weights)
+        print(f">>> [SFD] Loading weights from {checkpoint_path}")
+        ema_weights = torch.load(checkpoint_path, map_location=self.device)
+        
+        # [QUAN TRỌNG CHO DEEPINV v0.3.6] 
+        # Deepinv v0.3.6 có thêm các buffer cho alphas_cumprod vào DiffUNet.
+        # Dùng strict=False để cho phép PyTorch load weights cũ mà không báo lỗi "Missing key(s)".
+        self.model.load_state_dict(ema_weights, strict=False)
+        self.model.eval()
+        
+        # 3. Khởi tạo schedule cho DDIM
+        self.alphas_cumprod = compute_alpha_bars(torch.linspace(0, 1, 1000), self.device)
+        self.schedule = get_seq_schedule(self.num_steps)
+
+    def predict(self, map_arr, points_arr):
+        # --- PRE-PROCESSING ---
+        # Resize input về đúng kích thước model mong đợi (128x128)
+        map_resized = cv2.resize(map_arr, (self.img_size, self.img_size)) / 255.0
+        points_resized = cv2.resize(points_arr, (self.img_size, self.img_size)) / 255.0
+        
+        # Chuyển HWC sang CHW
+        map_tensor = torch.from_numpy(map_resized).permute(2, 0, 1).float().unsqueeze(0).to(self.device)
+        points_tensor = torch.from_numpy(points_resized).permute(2, 0, 1).float().unsqueeze(0).to(self.device)
+        
+        condition_img = torch.cat([map_tensor, points_tensor], dim=1)
+        
+        # --- INFERENCE ---
+        current_x = torch.randn(1, 3, self.img_size, self.img_size, device=self.device)
+        with torch.no_grad():
+            for i in range(len(self.schedule)):
+                t = self.schedule[i]
+                t_next = self.schedule[i+1] if i < len(self.schedule) - 1 else -1
+                current_x = ddim_step(self.model, current_x, t, t_next, self.alphas_cumprod, condition_img)
+
+        # --- POST-PROCESSING ---
+        # Chuẩn hóa ảnh sinh ra từ [-1, 1] về [0, 1]
+        pred_img = (current_x.squeeze(0) + 1.0) / 2.0
+        pred_img = torch.clamp(pred_img, 0, 1).cpu().numpy()
+        
+        # Lấy Heuristic từ channel Green (Khử nhiễu Red/Blue giống trong worker)
+        r, g, b = pred_img[0], pred_img[1], pred_img[2]
+        heuristic = np.clip(g - np.maximum(r, b), 0, 1)
+        
+        return heuristic # Trả về mảng numpy 128x128
