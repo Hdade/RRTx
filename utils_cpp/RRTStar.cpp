@@ -575,7 +575,11 @@ void RRTStar::run()
             std::vector<Obstacle *> currentVisibleObstacle = getSensorData();
             updateObstacles(shrinkingBallRadius(), currentVisibleObstacle);
         }
-        if (this->isPathBroken())
+        if (this->isInsideObstacle(v_bot))
+        {
+            move_robot = false;
+        }
+        else if (this->isPathBroken())
         {
             this->resetTree();
             this->processRRTStar();

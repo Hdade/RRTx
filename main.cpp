@@ -92,5 +92,6 @@ PYBIND11_MODULE(rrtx_cpp, m)
         .def("update_obstacles", &RRTStar::updateObstacles)
         .def("update_node_heuristics", &RRTStar::updateNodeHeuristics)
         .def("obstacleHasChanged", &RRTStar::obstacleHasChanged)
-        .def("update_sampling_distribution", &RRTStar::updateSamplingDistribution);
+        .def("update_sampling_distribution", &RRTStar::updateSamplingDistribution)
+        .def("is_inside_obstacle", &RRTStar::isInsideObstacle);
 }

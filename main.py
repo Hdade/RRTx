@@ -1,10 +1,11 @@
 import numpy as np
-import pygame, sys, cv2, rrtx_cpp, multiprocessing, queue, argparse, json, math, csv, os, time
+import pygame, sys, cv2, rrtx_cpp, multiprocessing, queue, argparse, json, math, csv, os, glob
+from time import perf_counter
+import torch
+
 from gan_worker import gan_worker_loop
 from sfd_worker import sfd_worker_loop, SFDInference
 from Hybrid_ViT_GAN.inferenceHelper import GANInference
-import torch
-from time import perf_counter
 
 Config = rrtx_cpp.config
 Node = rrtx_cpp.Node
@@ -33,8 +34,9 @@ STATE_TEST_MODEL = 3
 STATE_RUNNING = 4
 
 class Visualizer:
-    def __init__(self, model_type="gan", algo_type="rrtx"):
+    def __init__(self, model_type="gan", algo_type="rrtx", map_mode="all", groundtruth_type="D1-RRT"):
         pygame.init()
+        self.groundtruth_type = groundtruth_type
         self.screen = pygame.display.set_mode((Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
         self.model_type = model_type.upper()
         self.algo_type = algo_type.lower()
@@ -60,7 +62,7 @@ class Visualizer:
         self.show_tree = True
         self.paused = False
 
-        # --- 1. KHỞI TẠO CÁC BIẾN QUẢN LÝ MODEL ---
+        # --- KHỞI TẠO CÁC BIẾN QUẢN LÝ MODEL ---
         self.use_heuristic = True
         self.ai_model = None
         self.model_input_queue = None
@@ -71,34 +73,30 @@ class Visualizer:
         self.sampling_map_updated = False
         self.initial_map_loaded = False 
         self.heuristic_debug_surface = None
+        self.is_first_inference = True
 
-        # --- 2. SETUP MODEL DỰA TRÊN THUẬT TOÁN ---
         if self.model_type in ["GAN", "SFD"]:
             if self.algo_type == "rrtstar":
-                # RRT*: Chạy Inference trực tiếp (Không dùng Queue)
                 self.device = 'cpu'
                 if torch.cuda.is_available(): self.device = 'cuda'
                 elif torch.backends.mps.is_available(): self.device = 'mps'
                 
                 print(f">>> [Main] Initializing {self.model_type} directly on {self.device} for RRT*...")
                 if self.model_type == "GAN":
-                    checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_25.pth" # <--- Khớp với log của bạn
+                    checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_40.pth"
                     self.ai_model = GANInference(checkpoint_path, device=self.device)
                 elif self.model_type == "SFD":
                     checkpoint_path = "checkpoints/SFD_checkpoints/best_model.pth"
                     self.ai_model = SFDInference(checkpoint_path, device=self.device)
             
             elif self.algo_type == "rrtx":
-                # RRTx: Chạy Multiprocessing Queue
                 self.model_input_queue = multiprocessing.Queue()
                 self.model_output_queue = multiprocessing.Queue()
                 
                 if self.model_type == "GAN":
-                    print(">>> [Main] Starting GAN Worker Process for RRTx...")
-                    checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_25.pth" # <--- Khớp với log của bạn
+                    checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_40.pth"
                     target_func = gan_worker_loop
                 elif self.model_type == "SFD":
-                    print(">>> [Main] Starting SFD Worker Process for RRTx...")
                     checkpoint_path = "checkpoints/SFD_checkpoints/best_model.pth" 
                     target_func = sfd_worker_loop
                 
@@ -109,8 +107,81 @@ class Visualizer:
         else:
             self.use_heuristic = False
             
-        # --- 3. LOAD MAP VÀ TẠO THUẬT TOÁN ---
-        self.load_scenario("annotations1.json")
+        # --- BATCH RUN: QUÉT TÌM TẤT CẢ MAPS TRONG FOLDER ---
+        if map_mode.lower() == "all":
+            self.map_files = glob.glob("MAPS/**/*.json", recursive=True)
+            if not self.map_files:
+                print(">>> [Warning] Không tìm thấy file JSON nào trong thư mục MAPS/.")
+                if os.path.exists("annotations1.json"):
+                    print(">>> [Fallback] Chạy tạm file annotations1.json ở thư mục gốc.")
+                    self.map_files = ["annotations1.json"]
+                else:
+                    sys.exit(1)
+        else:
+            # Nếu người dùng nhập tên file cụ thể
+            if os.path.exists(map_mode):
+                self.map_files = [map_mode]
+                print(f">>> [Map Mode] Chạy 1 map duy nhất: {map_mode}")
+            else:
+                print(f">>> [Lỗi] Không tìm thấy file map: {map_mode}")
+                sys.exit(1)
+                
+        self.current_map_index = 0
+        self.load_next_map()
+
+    def quit_app(self):
+        if self.use_heuristic and self.worker_process:
+            if self.worker_process.is_alive():
+                self.worker_process.terminate()
+        pygame.quit()
+        sys.exit(0)
+
+    def load_next_map(self):
+        if self.current_map_index >= len(self.map_files):
+            print("\n" + "="*50)
+            print(">>> ĐÃ HOÀN THÀNH TẤT CẢ CÁC MAP! <<<")
+            print("="*50 + "\n")
+            self.quit_app()
+            return
+
+        self.current_map_path = self.map_files[self.current_map_index]
+        print(f"\n>>> ĐANG TẢI MAP ({self.current_map_index + 1}/{len(self.map_files)}): {self.current_map_path}")
+        self.current_map_index += 1
+        
+        # Reset các biến Log cho map mới
+        self.map_run_logs = []
+        self.current_run_id = 1
+        self.actual_path_cost = 0.0
+        self.last_inference_time = 0.0
+        
+        self.load_scenario(self.current_map_path)
+
+    # --- HÀM GHI LOG CHO RRT* ---
+    def record_rrt_log(self, planning_time):
+        nodes = len(self.planner.V) if hasattr(self.planner, 'V') else 0
+        iters = getattr(self.planner, "total_iterations", 0)
+        cost = self.goal_node.lmc if self.goal_node else float('inf')
+        
+        # Tạo RunID có kèm tên map để dễ phân tích (Ví dụ: map01_run1)
+        map_name = os.path.basename(self.current_map_path).split('.')[0]
+        run_id = f"{map_name}_run{self.current_run_id}"
+        
+        log_entry = [
+            self.model_type,
+            self.algo_type,
+            self.groundtruth_type,
+            run_id,
+            round(cost, 2),
+            nodes,
+            iters,
+            round(self.last_inference_time, 4),
+            round(planning_time, 4)
+        ]
+        self.map_run_logs.append(log_entry)
+        self.current_run_id += 1
+        
+        # Reset lại thời gian suy luận, tránh log lặp nếu lần tới replan mà không chạy AI
+        self.last_inference_time = 0.0 
 
     def get_rect_vertices(self, x, y, w, h, angle):
         w2, h2 = w / 2.0, h / 2.0
@@ -200,12 +271,6 @@ class Visualizer:
         if not self.use_heuristic or self.algo_type == "rrtstar": return
         try:
             flat_map = self.model_output_queue.get_nowait()
-            inference_duration = time.perf_counter() - self.model_request_time
-            if getattr(self, 'is_first_inference', True):
-                self.is_first_inference = False
-                print(f">>> [Main] Warm-up inference time: {inference_duration:.4f}s (Ignored)")
-            else:
-                self.inference_times.append(inference_duration)
             safe_flat_map = np.ascontiguousarray(flat_map.flatten(), dtype=np.float64)
             self.heuristic_debug_surface = self.create_heatmap_surface_from_data(flat_map)
             
@@ -255,17 +320,15 @@ class Visualizer:
     def update_model_heuristic(self):
         if not self.use_heuristic or self.pending_model_request: return
         map_img, points_img = self.get_model_input_from_pygame()
-        self.model_request_time = time.perf_counter()
         self.model_input_queue.put((map_img, points_img))
         self.pending_model_request = True
-        print(f">>> [Main] Sent request to {self.model_type} Worker...")
 
     def run_direct_inference(self):
         if not self.use_heuristic or self.ai_model is None:
             return
             
         map_img, points_img = self.get_model_input_from_pygame()
-        t0 = perf_counter() # BẮT ĐẦU ĐO THỜI GIAN
+        t0 = perf_counter() 
         
         if self.model_type == "GAN":
             heatmap_224 = self.ai_model.predict(map_img, points_img)
@@ -275,13 +338,14 @@ class Visualizer:
             heatmap_128 = self.ai_model.predict(map_img, points_img)
             heatmap_resized = cv2.resize(heatmap_128, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
             flat_map = heatmap_resized.flatten()
-           
-        inference_duration = perf_counter() - t0
+            
+        inference_duration = perf_counter() - t0        
         if getattr(self, 'is_first_inference', True):
             self.is_first_inference = False
             print(f">>> [Main] Warm-up inference time: {inference_duration:.4f}s (Ignored)")
+            self.last_inference_time = 0.0
         else:
-            self.inference_times.append(inference_duration)
+            self.last_inference_time = inference_duration
             
         safe_flat_map = np.ascontiguousarray(flat_map, dtype=np.float64)
         self.heuristic_debug_surface = self.create_heatmap_surface_from_data(safe_flat_map)
@@ -290,28 +354,20 @@ class Visualizer:
             self.planner.update_sampling_distribution(safe_flat_map, Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT)
             self.planner.update_node_heuristics()
             
-        print(f">>> [Main] Direct Inference Complete! (Map Updated)")
         self.sampling_map_updated = True
-        self.initial_map_loaded = True
+        self.initial_map_loaded = True 
 
     def init_algorithm(self):
         print(f">>> Initializing {self.algo_type.upper()} Algorithm...")
         self.model = HolonomicModel(self.obstacles)
-        self.actual_path_cost = 0.0
-
-        self.inference_times = []
-        self.planning_times = []
-        self.model_request_time = 0
-        self.is_first_inference = True
         
-        # --- CHỌN THUẬT TOÁN DỰA TRÊN ARGUMENT ---
         if self.algo_type == "rrtstar":
             self.planner = RRTStar(self.start_node, self.goal_node, self.model)
             self.rrtstar_first_run_done = False
             self.run_direct_inference() 
         else:
             self.planner = RRTx(self.start_node, self.goal_node, self.model)
-            self.update_model_heuristic()
+            self.update_model_heuristic() 
 
     def is_point_inside_polygon(self, point, vertices):
         x, y = point
@@ -371,7 +427,7 @@ class Visualizer:
                             self.current_state = STATE_RUNNING
                             self.init_algorithm()
                     if self.current_state == STATE_TEST_MODEL and event.key == pygame.K_SPACE:
-                        self.update_model_heuristic()
+                        self.run_direct_inference() if self.algo_type == "rrtstar" else self.update_model_heuristic()
                     if self.current_state == STATE_RUNNING:
                         if event.key == pygame.K_t: self.show_tree = not self.show_tree
                         elif event.key == pygame.K_SPACE: self.paused = not self.paused
@@ -384,19 +440,29 @@ class Visualizer:
                     elif self.current_state == STATE_SET_GOAL and event.button == 1:
                         self.goal_node = Node(float(mx), float(my))
                         self.current_state = STATE_TEST_MODEL
-                        self.update_model_heuristic()
+                        self.run_direct_inference() if self.algo_type == "rrtstar" else self.update_model_heuristic()
                     elif self.current_state == STATE_RUNNING: self.handle_obstacle_click((mx, my), event.button == 1)
                     elif self.current_state == STATE_TEST_MODEL:
                         self.handle_obstacle_click((mx, my), event.button == 1)
-                        self.update_model_heuristic()
+                        self.run_direct_inference() if self.algo_type == "rrtstar" else self.update_model_heuristic()
 
             self.check_model_result()
             is_model_ready = (not self.use_heuristic) or self.initial_map_loaded
 
             if self.current_state == STATE_RUNNING and self.planner:
-                if not self.sampling_map_updated and self.algo_type == 'rrtx': self.update_model_heuristic()
+                if not self.sampling_map_updated and self.algo_type == "rrtx": 
+                    self.update_model_heuristic()
 
                 if is_model_ready and not self.paused:
+                    
+                    if self.algo_type == "rrtstar" and not getattr(self, 'rrtstar_first_run_done', True):
+                        print(">>> [RRT*] Bắt đầu tìm đường lần đầu với Heuristic...")
+                        t0 = perf_counter()
+                        self.planner.process_rrt_star()
+                        t1 = perf_counter()
+                        self.record_rrt_log(t1 - t0)
+                        self.rrtstar_first_run_done = True
+
                     current_time = pygame.time.get_ticks()
                     
                     if current_time - self.last_obs_move_time > self.obstacle_move_delay:
@@ -404,9 +470,7 @@ class Visualizer:
                         needs_cpp_update = False
                         new_obstacles_cpp = []
 
-                        bot_pos = None
-                        if hasattr(self.planner, 'v_bot') and self.planner.v_bot:
-                            bot_pos = self.planner.v_bot.pos
+                        bot_pos = self.planner.v_bot.pos if (hasattr(self.planner, 'v_bot') and self.planner.v_bot) else None
                         
                         for py_obs in self.py_obstacles:
                             if py_obs['type'] == 'proximity' and bot_pos and not py_obs.get('triggered', False):
@@ -460,54 +524,52 @@ class Visualizer:
                         else:
                             if self.current_state == STATE_RUNNING:
                                 print("\n>>> [Success] Robot đã chạm đích an toàn!")
-                                self.current_state = STATE_TEST_MODEL
-
-                                csv_file = "metrics.csv"
-                                file_exists = os.path.isfile(csv_file)
-                                with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
-                                    writer = csv.writer(f)
-                                    if not file_exists:
-                                        writer.writerow(["Model", "Algorithm", "Path Cost", "Max Nodes", "Total Iterations", "Avg Inference Time (s)", "Avg Planning Time (s)"])
-                                    
-                                    max_nodes = getattr(self.planner, "max_nodes", len(self.planner.V))
-                                    total_iters = getattr(self.planner, "total_iterations", 0)
-                                    avg_inference = sum(self.inference_times) / len(self.inference_times) if self.inference_times else 0.0
-                                    avg_planning = sum(self.planning_times) / len(self.planning_times) if self.planning_times else 0.0
-                                    
-                                    writer.writerow([
-                                        self.model_type, self.algo_type, 
-                                        round(self.actual_path_cost, 2), max_nodes, total_iters, 
-                                        round(avg_inference, 4), round(avg_planning, 4)
-                                    ])
-                                print(f">>> [Metrics] Đã lưu thông số vào {csv_file}")
+                                
+                                # --------- KHỐI GHI LOG CSV ---------
+                                if self.algo_type == "rrtstar" and self.map_run_logs:
+                                    csv_file = "metrics.csv"
+                                    file_exists = os.path.isfile(csv_file)
+                                    with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
+                                        writer = csv.writer(f)
+                                        if not file_exists:
+                                            writer.writerow(["Model", "Algorithm", "Groundtruth Type", "RunID", "Path Cost", "Number Of Nodes", "Number Of Iterations", "Inference Time (s)", "Planning Time (s)"])
+                                        
+                                        for log in self.map_run_logs:
+                                            writer.writerow(log)
+                                    print(f">>> [Metrics] Đã lưu {len(self.map_run_logs)} logs của map vào {csv_file}")
+                                # ------------------------------------
+                                
+                                # TỰ ĐỘNG CHUYỂN SANG MAP TIẾP THEO
+                                self.load_next_map()
+                                continue
                     
                     # --- GỌI THUẬT TOÁN TƯƠNG ỨNG ---            
                     if self.algo_type == "rrtx":
                         self.planner.step(move_robot=should_move_robot)
-                    elif self.algo_type == "rrtstar":
-                        # RRT*: Kiểm tra đường có bị chặn không, nếu có thì xoá và tính lại
-                        if self.planner.is_path_broken():
-                            print(">>> [RRT*] Đường đi bị đứt! Reset lại cây từ vị trí robot...")
-                            self.run_direct_inference()
-                            self.planner.reset_tree()
-                            t0 = time.perf_counter()
-                            self.planner.process_rrt_star()
-                            t1 = time.perf_counter()
-                            self.planning_times.append(t1 - t0)
                         
-                        # Di chuyển logic riêng do v_bot là root và goal có parent
+                    elif self.algo_type == "rrtstar":
+                        if self.planner.is_inside_obstacle(self.planner.v_bot):
+                            should_move_robot = False
+                        else:
+                            # RRT*: Kiểm tra đường có bị chặn không, nếu có thì xoá và tính lại
+                            if self.planner.is_path_broken():
+                                print(">>> [RRT*] Đường đi bị đứt! Chạy AI lấy Heuristic mới trực tiếp...")
+                                self.run_direct_inference()
+                                self.planner.reset_tree()
+                                t0 = perf_counter()
+                                self.planner.process_rrt_star()
+                                t1 = perf_counter()
+                                self.record_rrt_log(t1 - t0) # Ghi nhận số liệu của lần replan này
+                        
+                        # Di chuyển
                         if should_move_robot and not reached_goal:
                             if dist_to_goal <= Config.GOAL_RADIUS:
                                 self.planner.v_bot = self.goal_node
                             else:
-                                # Dò ngược từ đích về bot để tìm node liền kề v_bot
                                 curr = self.goal_node
-                                if curr.parent is not None: # Nếu có đường về đích
+                                if curr.parent is not None:
                                     while curr.parent is not None and curr.parent != self.planner.v_bot:
                                         curr = curr.parent
-                                    step_dist = math.hypot(self.planner.v_bot.pos[0] - curr.pos[0], 
-                                                           self.planner.v_bot.pos[1] - curr.pos[1])
-                                    self.actual_path_cost += step_dist
                                     self.planner.v_bot = curr
 
             self.screen.fill(COLOR_BG)
@@ -541,7 +603,6 @@ class Visualizer:
                     bot_pos = (int(self.planner.v_bot.pos[0]), int(self.planner.v_bot.pos[1]))
                     pygame.draw.circle(self.screen, COLOR_ROBOT, bot_pos, 8)
                     
-                    # --- VẼ PATH TÙY THEO THUẬT TOÁN ---
                     path = []
                     if self.algo_type == "rrtx":
                         curr = self.planner.v_bot
@@ -552,7 +613,7 @@ class Visualizer:
                         if curr: path.append((curr.pos[0], curr.pos[1]))
                     elif self.algo_type == "rrtstar":
                         curr = self.goal_node
-                        if curr.parent is not None: # Nếu đã tìm được đường
+                        if curr.parent is not None:
                             while curr and curr.parent:
                                 path.append((curr.pos[0], curr.pos[1]))
                                 curr = curr.parent
@@ -563,7 +624,7 @@ class Visualizer:
 
             self.draw_ui_overlay(is_model_ready if self.current_state == STATE_RUNNING else True)
             pygame.display.flip()
-            self.clock.tick(Config.FPS)
+            self.clock.tick(60)
 
     def draw_ui_overlay(self, is_ready=True):
         status_text, instruct_text = "", ""
@@ -579,10 +640,9 @@ class Visualizer:
             if not is_ready:
                 status_text, instruct_text = "MODE: INITIALIZING AI...", "Waiting for Model to load and map heuristics..."
             else:
-                # Đọc chi phí tùy theo thuật toán
                 if self.algo_type == "rrtx":
                     cost = self.planner.v_bot.lmc if (hasattr(self.planner, 'v_bot') and self.planner.v_bot is not None) else float('inf')
-                else: # RRT* lưu cost ở goal node do v_bot là root
+                else:
                     cost = self.goal_node.lmc if self.goal_node else float('inf')
                     
                 cost_str = f"{cost:.2f}" if cost < float('inf') else "Inf"
@@ -596,21 +656,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Path Planning Visualization")
     parser.add_argument("--model", type=str, choices=["gan", "sfd", "none"], default="none", help="Mô hình dùng để sinh Heuristic (gan, sfd, none)")
     parser.add_argument("--algo", type=str, choices=["rrtx", "rrtstar"], default="rrtx", help="Thuật toán chạy (rrtx hoặc rrtstar)")
+    parser.add_argument("--map", type=str, default="annotations.json", help="Đường dẫn file map (vd: annotations1.json) hoặc 'all' để chạy tất cả")
     args = parser.parse_args()
 
+    groundtruth_type = "None"
     viz = None
     try:
-        viz = Visualizer(model_type=args.model, algo_type=args.algo)
+        viz = Visualizer(model_type=args.model, algo_type=args.algo, map_mode=args.map, groundtruth_type=groundtruth_type)
         viz.run()
     except Exception as e:
         print(f"\n>>> [Main] Chương trình văng lỗi: {e}")
     except KeyboardInterrupt:
         pass
     finally:
-        if viz and viz.use_heuristic and viz.worker_process:
-            if viz.worker_process.is_alive():
-                viz.worker_process.terminate()
-                viz.worker_process.join(timeout=1)
-                if viz.worker_process.is_alive(): viz.worker_process.kill()
-        pygame.quit()
-        sys.exit()
+        if viz: viz.quit_app()
