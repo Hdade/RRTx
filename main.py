@@ -528,6 +528,11 @@ class Visualizer:
                                 # --------- KHỐI GHI LOG CSV ---------
                                 if self.algo_type == "rrtstar" and self.map_run_logs:
                                     csv_file = "metrics.csv"
+
+                                    map_name = os.path.basename(self.current_map_path).split('.')[0]
+                                    actual_run_id = f"{map_name}_ACTUAL_TRAVEL"
+                                    actual_log_entry = [self.model_type, self.algo_type, "", actual_run_id, round(self.actual_path_cost, 2), "", "", "", ""]
+
                                     file_exists = os.path.isfile(csv_file)
                                     with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
                                         writer = csv.writer(f)
@@ -536,6 +541,7 @@ class Visualizer:
                                         
                                         for log in self.map_run_logs:
                                             writer.writerow(log)
+                                        writer.writerow(actual_log_entry)
                                     print(f">>> [Metrics] Đã lưu {len(self.map_run_logs)} logs của map vào {csv_file}")
                                 # ------------------------------------
                                 
@@ -562,7 +568,12 @@ class Visualizer:
                                 self.record_rrt_log(t1 - t0)
                     #di chuyển        
                     if should_move_robot and not reached_goal:
+                        old_pos = (self.planner.v_bot.pos[0], self.planner.v_bot.pos[1])
                         self.planner.v_bot = self.planner.update_robot()
+
+                        new_pos = (self.planner.v_bot.pos[0], self.planner.v_bot.pos[1])
+                        step_dist = math.hypot(new_pos[0] - old_pos[0], new_pos[1] - old_pos[1])
+                        self.actual_path_cost += step_dist
 
             self.screen.fill(COLOR_BG)
 
