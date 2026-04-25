@@ -145,6 +145,8 @@ class Visualizer:
             return
 
         self.current_map_path = self.map_files[self.current_map_index]
+        self.map_type = os.path.basename(os.path.dirname(self.current_map_path))
+        if not self.map_type: self.map_type = "unknown"
         print(f"\n>>> ĐANG TẢI MAP ({self.current_map_index + 1}/{len(self.map_files)}): {self.current_map_path}")
         self.current_map_index += 1
         
@@ -169,6 +171,7 @@ class Visualizer:
         log_entry = [
             self.model_type,
             self.algo_type,
+            self.map_type,
             self.groundtruth_type,
             run_id,
             round(cost, 2),
@@ -537,7 +540,7 @@ class Visualizer:
                                     with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
                                         writer = csv.writer(f)
                                         if not file_exists:
-                                            writer.writerow(["Model", "Algorithm", "Groundtruth Type", "RunID", "Path Cost", "Number Of Nodes", "Number Of Iterations", "Inference Time (s)", "Planning Time (s)"])
+                                            writer.writerow(["Model", "Algorithm", "Map Type", "Groundtruth Type", "RunID", "Path Cost", "Number Of Nodes", "Number Of Iterations", "Inference Time (s)", "Planning Time (s)"])
                                         
                                         for log in self.map_run_logs:
                                             writer.writerow(log)
