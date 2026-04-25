@@ -125,6 +125,7 @@ public:
     // Main Loop
     Node *updateRobot();
     void run();
+    bool step(bool move_robot);
     bool processRRTStar();
     bool isPathBroken();
     void resetTree();

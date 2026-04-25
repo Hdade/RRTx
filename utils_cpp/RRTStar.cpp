@@ -562,7 +562,22 @@ Node *RRTStar::updateRobot()
         }
     }
 
-    return (v_bot->parent == nullptr) ? v_bot : v_bot->parent;
+    if (v_goal->parent == nullptr)
+    {
+        return v_bot;
+    }
+
+    Node *curr = v_goal;
+    while (curr->parent != nullptr && curr->parent != v_bot)
+    {
+        curr = curr->parent;
+    }
+    if (isCollision(v_bot, curr))
+    {
+        return v_bot;
+    }
+
+    return curr;
 }
 
 void RRTStar::run()
@@ -570,25 +585,7 @@ void RRTStar::run()
     bool move_robot = false;
     while (v_bot != v_goal)
     {
-        if (obstacleHasChanged())
-        {
-            std::vector<Obstacle *> currentVisibleObstacle = getSensorData();
-            updateObstacles(shrinkingBallRadius(), currentVisibleObstacle);
-        }
-        if (this->isInsideObstacle(v_bot))
-        {
-            move_robot = false;
-        }
-        else if (this->isPathBroken())
-        {
-            this->resetTree();
-            this->processRRTStar();
-            move_robot = true;
-        }
-        if (move_robot && v_bot->lmc < std::numeric_limits<double>::infinity() && v_bot != v_goal)
-        {
-            v_bot = updateRobot();
-        }
+        step(move_robot);
         if (V.size() > config::MAX_ITER)
         {
             break;
@@ -596,14 +593,43 @@ void RRTStar::run()
     }
 }
 
+bool RRTStar::step(bool move_robot)
+{
+    if (d(v_bot, v_goal) <= config::GOAL_RADIUS)
+    {
+        return true;
+    }
+    if (obstacleHasChanged())
+    {
+        std::vector<Obstacle *> currentVisibleObstacle = getSensorData();
+        updateObstacles(shrinkingBallRadius(), currentVisibleObstacle);
+    }
+    if (this->isInsideObstacle(v_bot))
+    {
+        move_robot = false;
+    }
+    else if (this->isPathBroken() && !this->isInsideObstacle(v_bot))
+    {
+        this->resetTree();
+        this->processRRTStar();
+        move_robot = this->isInsideObstacle(v_bot) ? false : true;
+    }
+    if (move_robot && v_bot->lmc < std::numeric_limits<double>::infinity() && v_bot != v_goal)
+    {
+        v_bot = updateRobot();
+    }
+    return false;
+}
+
 bool RRTStar::processRRTStar()
 {
-    if (v_bot == v_goal)
+    if (d(v_bot, v_goal) <= config::GOAL_RADIUS)
         return true;
 
     int no_improvement_count = 0;
     double best_cost = std::numeric_limits<double>::infinity();
 
+    this->total_iterations = 0;
     for (int i = 0; i < config::MAX_ITER; ++i)
     {
         this->total_iterations++;
@@ -711,9 +737,8 @@ void RRTStar::extend(Node *v, double r)
 
 bool RRTStar::isPathBroken()
 {
-    if (v_bot == v_goal)
+    if (d(v_bot, v_goal) <= config::GOAL_RADIUS)
         return false;
-
     Node *current = v_goal;
     while (current != nullptr && current != v_bot)
     {
@@ -721,7 +746,7 @@ bool RRTStar::isPathBroken()
         {
             return true;
         }
-        if (isCollision(current, current->parent))
+        if (this->isInsideObstacle(current))
         {
             return true;
         }

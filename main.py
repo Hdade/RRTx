@@ -514,7 +514,7 @@ class Visualizer:
                             self.planner.v_bot.pos[0] - self.goal_node.pos[0], 
                             self.planner.v_bot.pos[1] - self.goal_node.pos[1]
                         )
-                        if dist_to_goal < 5.0:
+                        if dist_to_goal <= Config.GOAL_RADIUS:
                             reached_goal = True
 
                     if current_time - self.last_robot_move_time > self.robot_move_delay:
@@ -548,29 +548,7 @@ class Visualizer:
                         self.planner.step(move_robot=should_move_robot)
                         
                     elif self.algo_type == "rrtstar":
-                        if self.planner.is_inside_obstacle(self.planner.v_bot):
-                            should_move_robot = False
-                        else:
-                            # RRT*: Kiểm tra đường có bị chặn không, nếu có thì xoá và tính lại
-                            if self.planner.is_path_broken():
-                                print(">>> [RRT*] Đường đi bị đứt! Chạy AI lấy Heuristic mới trực tiếp...")
-                                self.run_direct_inference()
-                                self.planner.reset_tree()
-                                t0 = perf_counter()
-                                self.planner.process_rrt_star()
-                                t1 = perf_counter()
-                                self.record_rrt_log(t1 - t0) # Ghi nhận số liệu của lần replan này
-                        
-                        # Di chuyển
-                        if should_move_robot and not reached_goal:
-                            if dist_to_goal <= Config.GOAL_RADIUS:
-                                self.planner.v_bot = self.goal_node
-                            else:
-                                curr = self.goal_node
-                                if curr.parent is not None:
-                                    while curr.parent is not None and curr.parent != self.planner.v_bot:
-                                        curr = curr.parent
-                                    self.planner.v_bot = curr
+                        self.planner.step(move_robot=should_move_robot)
 
             self.screen.fill(COLOR_BG)
 

@@ -108,3 +108,4 @@ python ./oldRRTx/main.py
 - Bản hiện tại tách phần core sang C++ để tăng tốc, Python chỉ giữ phần hiển thị + logic điều khiển.
 - [UPDATE]: Ở trong `run.sh` thì có cho phép 2 option là sfd và gan. Chỉ cần mở `run.sh` để edit lại chỗ `--model` là `gan` hoặc `sfd`
 - Ở phần `algo` chỉ thuật toán người dùng muốn dùng để chạy: `rrtstar` chỉ RRT\* còn `rrtx` chỉ RRTX
+- Ở phần `map` chỉ map người dùng muốn dùng để chạy: `all` chỉ chạy hết các map trong folder `Maps` còn muốn chạy map nào thì có thể thêm đường dẫn của file đó.
