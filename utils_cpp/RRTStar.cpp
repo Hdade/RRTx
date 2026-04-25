@@ -744,8 +744,10 @@ bool RRTStar::isPathBroken()
     if (d(v_bot, v_goal) <= config::GOAL_RADIUS)
         return false;
     Node *current = v_goal;
-    while (current != nullptr && current != v_bot)
+    for (int i = 0; i < this->V.size(); i++)
     {
+        if (current == nullptr || current == v_bot)
+            break;
         if (current->parent == nullptr || current->lmc >= std::numeric_limits<double>::infinity() || current->lmc == 0.0) // thêm vì cây bị phá trong khi chưa update mà hàm này dùng ở root thay vì ở v_bot
         {
             return true;

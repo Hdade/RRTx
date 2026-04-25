@@ -534,7 +534,7 @@ class Visualizer:
 
                                     map_name = os.path.basename(self.current_map_path).split('.')[0]
                                     actual_run_id = f"{map_name}_ACTUAL_TRAVEL"
-                                    actual_log_entry = [self.model_type, self.algo_type, "", actual_run_id, round(self.actual_path_cost, 2), "", "", "", ""]
+                                    actual_log_entry = [self.model_type, self.algo_type, self.map_type,self.groundtruth_type, actual_run_id, round(self.actual_path_cost, 2), "", "", "", ""]
 
                                     file_exists = os.path.isfile(csv_file)
                                     with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
