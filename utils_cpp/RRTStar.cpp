@@ -608,7 +608,7 @@ bool RRTStar::step(bool move_robot)
     {
         move_robot = false;
     }
-    else if (this->isPathBroken() && !this->isInsideObstacle(v_bot))
+    else if (move_robot && this->isPathBroken() && !this->isInsideObstacle(v_bot))
     {
         this->resetTree();
         this->processRRTStar();
@@ -657,6 +657,10 @@ bool RRTStar::processRRTStar()
             {
                 rewireNeighbors(v, r);
                 // reduceInconsistency(r);
+            }
+            else
+            {
+                delete v;
             }
         }
         else
@@ -742,11 +746,11 @@ bool RRTStar::isPathBroken()
     Node *current = v_goal;
     while (current != nullptr && current != v_bot)
     {
-        if (current->parent == nullptr || current->lmc >= std::numeric_limits<double>::infinity())
+        if (current->parent == nullptr || current->lmc >= std::numeric_limits<double>::infinity() || current->lmc == 0.0) // thêm vì cây bị phá trong khi chưa update mà hàm này dùng ở root thay vì ở v_bot
         {
             return true;
         }
-        if (this->isInsideObstacle(current))
+        if (this->isCollision(current, current->parent))
         {
             return true;
         }

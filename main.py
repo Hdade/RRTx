@@ -548,7 +548,21 @@ class Visualizer:
                         self.planner.step(move_robot=should_move_robot)
                         
                     elif self.algo_type == "rrtstar":
-                        self.planner.step(move_robot=should_move_robot)
+                        if self.planner.is_path_broken():
+                            self.planner.reset_tree()
+                            if self.planner.is_inside_obstacle(self.planner.v_bot):
+                                should_move_robot = False
+                            if should_move_robot:
+                                self.run_direct_inference() 
+                                t0 = perf_counter()
+                                self.planner.process_rrt_star()
+                                t1 = perf_counter()
+                                should_move_robot = not self.planner.is_inside_obstacle(self.planner.v_bot)
+
+                                self.record_rrt_log(t1 - t0)
+                    #di chuyển        
+                    if should_move_robot and not reached_goal:
+                        self.planner.v_bot = self.planner.update_robot()
 
             self.screen.fill(COLOR_BG)
 
@@ -634,7 +648,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Path Planning Visualization")
     parser.add_argument("--model", type=str, choices=["gan", "sfd", "none"], default="none", help="Mô hình dùng để sinh Heuristic (gan, sfd, none)")
     parser.add_argument("--algo", type=str, choices=["rrtx", "rrtstar"], default="rrtx", help="Thuật toán chạy (rrtx hoặc rrtstar)")
-    parser.add_argument("--map", type=str, default="annotations.json", help="Đường dẫn file map (vd: annotations1.json) hoặc 'all' để chạy tất cả")
+    parser.add_argument("--map", type=str, default="Maps\dynamic_static_maps\map_040.json", help="Đường dẫn file map (vd: annotations1.json) hoặc 'all' để chạy tất cả")
     args = parser.parse_args()
 
     groundtruth_type = "None"
