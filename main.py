@@ -83,10 +83,10 @@ class Visualizer:
                 
                 print(f">>> [Main] Initializing {self.model_type} directly on {self.device} for RRT*...")
                 if self.model_type == "GAN":
-                    checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_40.pth"
+                    checkpoint_path = "checkpoints/GAN_checkpoint/D3-RRTstar/netG_epoch_40.pth"
                     self.ai_model = GANInference(checkpoint_path, device=self.device)
                 elif self.model_type == "SFD":
-                    checkpoint_path = "checkpoints/SFD_checkpoints/best_model.pth"
+                    checkpoint_path = "checkpoints/SFD_checkpoints/D1 - RRT"
                     self.ai_model = SFDInference(checkpoint_path, device=self.device)
             
             elif self.algo_type == "rrtx":
@@ -97,7 +97,7 @@ class Visualizer:
                     checkpoint_path = "checkpoints/GAN_checkpoint/netG_epoch_40.pth"
                     target_func = gan_worker_loop
                 elif self.model_type == "SFD":
-                    checkpoint_path = "checkpoints/SFD_checkpoints/best_model.pth" 
+                    checkpoint_path = "checkpoints/SFD_checkpoints/D1 - RRT" 
                     target_func = sfd_worker_loop
                 
                 target_args = (self.model_input_queue, self.model_output_queue, checkpoint_path, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
@@ -338,9 +338,11 @@ class Visualizer:
             heatmap_resized = cv2.resize(heatmap_224, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
             flat_map = heatmap_resized.flatten()
         elif self.model_type == "SFD":
-            heatmap_128 = self.ai_model.predict(map_img, points_img)
-            heatmap_resized = cv2.resize(heatmap_128, (Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
-            flat_map = heatmap_resized.flatten()
+            flat_map = self.ai_model.predict(
+                map_img, 
+                points_img, 
+                target_dims=(Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT)
+            )
             
         inference_duration = perf_counter() - t0        
         if getattr(self, 'is_first_inference', True):
@@ -569,14 +571,14 @@ class Visualizer:
                                 should_move_robot = not self.planner.is_inside_obstacle(self.planner.v_bot)
 
                                 self.record_rrt_log(t1 - t0)
-                    #di chuyển        
-                    if should_move_robot and not reached_goal:
-                        old_pos = (self.planner.v_bot.pos[0], self.planner.v_bot.pos[1])
-                        self.planner.v_bot = self.planner.update_robot()
+                        #di chuyển        
+                        if should_move_robot and not reached_goal:
+                            old_pos = (self.planner.v_bot.pos[0], self.planner.v_bot.pos[1])
+                            self.planner.v_bot = self.planner.update_robot()
 
-                        new_pos = (self.planner.v_bot.pos[0], self.planner.v_bot.pos[1])
-                        step_dist = math.hypot(new_pos[0] - old_pos[0], new_pos[1] - old_pos[1])
-                        self.actual_path_cost += step_dist
+                            new_pos = (self.planner.v_bot.pos[0], self.planner.v_bot.pos[1])
+                            step_dist = math.hypot(new_pos[0] - old_pos[0], new_pos[1] - old_pos[1])
+                            self.actual_path_cost += step_dist
 
             self.screen.fill(COLOR_BG)
 
@@ -665,7 +667,7 @@ if __name__ == "__main__":
     parser.add_argument("--map", type=str, default="Maps\dynamic_static_maps\map_040.json", help="Đường dẫn file map (vd: annotations1.json) hoặc 'all' để chạy tất cả")
     args = parser.parse_args()
 
-    groundtruth_type = "None"
+    groundtruth_type = "D1 - RRT"
     viz = None
     try:
         viz = Visualizer(model_type=args.model, algo_type=args.algo, map_mode=args.map, groundtruth_type=groundtruth_type)

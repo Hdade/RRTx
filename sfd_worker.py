@@ -178,58 +178,102 @@ def sfd_worker_loop(input_queue, output_queue, checkpoint_dir, config_screen_dim
 
 
 class SFDInference:
-    def __init__(self, checkpoint_path, device='cpu', num_steps=4):
-        self.device = device
-        self.img_size = 128
-        self.num_steps = num_steps
+    def __init__(self, checkpoint_dir, sfd_steps=4, ema_beta=0.85, img_size=128, device=None):
+        self.img_size = img_size
+        self.sfd_steps = sfd_steps
         
-        print(f">>> [SFD] Initializing DiffUNet model on {self.device}...")
-        
-        # 1. Khởi tạo cấu trúc Model từ deepinv (v0.3.6)
-        # Lưu ý: Cấu trúc này cần khớp với file config lúc bạn train. 
-        self.model = deepinv.models.DiffUNet(in_channels=6, out_channels=3).to(self.device)
-        
-        # 2. Load trọng số (Weights)
-        print(f">>> [SFD] Loading weights from {checkpoint_path}")
-        ema_weights = torch.load(checkpoint_path, map_location=self.device)
-        
-        # [QUAN TRỌNG CHO DEEPINV v0.3.6] 
-        # Deepinv v0.3.6 có thêm các buffer cho alphas_cumprod vào DiffUNet.
-        # Dùng strict=False để cho phép PyTorch load weights cũ mà không báo lỗi "Missing key(s)".
-        self.model.load_state_dict(ema_weights, strict=False)
-        self.model.eval()
-        
-        # 3. Khởi tạo schedule cho DDIM
-        self.alphas_cumprod = compute_alpha_bars(torch.linspace(0, 1, 1000), self.device)
-        self.schedule = get_seq_schedule(self.num_steps)
+        # Auto-detect device nếu không được truyền vào
+        if device is None:
+            self.device = 'cpu'
+            if torch.cuda.is_available():
+                self.device = 'cuda'
+            elif torch.backends.mps.is_available():
+                self.device = 'mps'
+        else:
+            self.device = device
+            
+        print(f"{INFO}>>> [SFDInference] Initializing DiffUNet on {self.device}...{RESET}")
 
-    def predict(self, map_arr, points_arr):
+        # 1. Khởi tạo Model
+        self.model = deepinv.models.DiffUNet(in_channels=7, out_channels=3, pretrained=None)
+        ema_weights = get_cached_ema_weights(checkpoint_dir, start_ep=1, end_ep=20, sfd_steps=self.sfd_steps, beta=ema_beta)
+        if ema_weights is not None:
+            self.model.load_state_dict(ema_weights)
+        else:
+            print(f"{ERROR}[SFDInference] ERROR: Cannot read any checkpoint!. Inference will fail.{RESET}")
+            return
+
+        self.model.to(self.device)
+        self.model.eval()
+        self.alphas_cumprod = compute_alpha_bars(1000, self.device)
+        self.student_schedule = get_seq_schedule(self.sfd_steps, 1000).to(self.device)
+
+        # 2. Warm-up
+        print(f"{INFO}[SFDInference] Warming-up {self.device}...{RESET}")
+        with torch.no_grad():
+            dummy_cond = torch.randn(1, 4, self.img_size, self.img_size, device=self.device)
+            dummy_x = torch.randn(1, 3, self.img_size, self.img_size, device=self.device)
+            for i in range(len(self.student_schedule)):
+                t_student = self.student_schedule[i]
+                t_next = self.student_schedule[i+1] if i < len(self.student_schedule) - 1 else -1
+                dummy_x = ddim_step(self.model, dummy_x, t_student, t_next, self.alphas_cumprod, dummy_cond)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+        print(f"{SUCCESS}[SFDInference] Model ready for prediction!{RESET}")
+
+    def predict(self, map_arr, points_arr, target_dims=None):
+        h_orig, w_orig = map_arr.shape[:2]
+        w = target_dims[0] if target_dims else w_orig
+        h = target_dims[1] if target_dims else h_orig
+        
         # --- PRE-PROCESSING ---
-        # Resize input về đúng kích thước model mong đợi (128x128)
-        map_resized = cv2.resize(map_arr, (self.img_size, self.img_size)) / 255.0
-        points_resized = cv2.resize(points_arr, (self.img_size, self.img_size)) / 255.0
+        map_gray = cv2.cvtColor(map_arr, cv2.COLOR_RGB2GRAY)
+        map_resized = cv2.resize(map_gray, (self.img_size, self.img_size), interpolation=cv2.INTER_AREA)
+        map_tensor = torch.from_numpy(map_resized).float() / 127.5 - 1.0 
+        map_tensor = map_tensor.unsqueeze(0).unsqueeze(0)
         
-        # Chuyển HWC sang CHW
-        map_tensor = torch.from_numpy(map_resized).permute(2, 0, 1).float().unsqueeze(0).to(self.device)
-        points_tensor = torch.from_numpy(points_resized).permute(2, 0, 1).float().unsqueeze(0).to(self.device)
+        points_resized = np.ones((self.img_size, self.img_size, 3), dtype=np.uint8) * 255 
+        points_arr = np.array(points_arr)
         
-        condition_img = torch.cat([map_tensor, points_tensor], dim=1)
+        start_mask = (points_arr[:, :, 0] > 150) & (points_arr[:, :, 1] < 100) & (points_arr[:, :, 2] < 100)
+        if np.any(start_mask):
+            coords = np.argwhere(start_mask)
+            y, x = coords.mean(axis=0)
+            y_128, x_128 = int(y * self.img_size / h_orig), int(x * self.img_size / w_orig)
+            cv2.circle(points_resized, (x_128, y_128), 4, (255, 0, 0), -1) 
+            
+        goal_mask = (points_arr[:, :, 2] > 150) & (points_arr[:, :, 0] < 100) & (points_arr[:, :, 1] < 100)
+        if np.any(goal_mask):
+            coords = np.argwhere(goal_mask)
+            y, x = coords.mean(axis=0)
+            y_128, x_128 = int(y * self.img_size / h_orig), int(x * self.img_size / w_orig)
+            cv2.circle(points_resized, (x_128, y_128), 4, (0, 0, 255), -1) 
+
+        points_tensor = torch.from_numpy(points_resized).float() / 127.5 - 1.0 
+        points_tensor = points_tensor.permute(2, 0, 1).unsqueeze(0)
         
+        condition_img = torch.cat([map_tensor, points_tensor], dim=1).to(self.device)
+
         # --- INFERENCE ---
         current_x = torch.randn(1, 3, self.img_size, self.img_size, device=self.device)
         with torch.no_grad():
-            for i in range(len(self.schedule)):
-                t = self.schedule[i]
-                t_next = self.schedule[i+1] if i < len(self.schedule) - 1 else -1
-                current_x = ddim_step(self.model, current_x, t, t_next, self.alphas_cumprod, condition_img)
+            for i in range(len(self.student_schedule)):
+                t_student = self.student_schedule[i]
+                t_next_student = self.student_schedule[i+1] if i < len(self.student_schedule) - 1 else -1
+                current_x = ddim_step(self.model, current_x, t_student, t_next_student, self.alphas_cumprod, condition_img)
 
         # --- POST-PROCESSING ---
-        # Chuẩn hóa ảnh sinh ra từ [-1, 1] về [0, 1]
-        pred_img = (current_x.squeeze(0) + 1.0) / 2.0
-        pred_img = torch.clamp(pred_img, 0, 1).cpu().numpy()
+        pred_img = (current_x.squeeze(0) + 1.0) / 2.0 
+        pred_img = torch.clamp(pred_img, 0, 1)
+        pred_np = pred_img.cpu().numpy()
         
-        # Lấy Heuristic từ channel Green (Khử nhiễu Red/Blue giống trong worker)
-        r, g, b = pred_img[0], pred_img[1], pred_img[2]
-        heuristic = np.clip(g - np.maximum(r, b), 0, 1)
+        r_channel = pred_np[0, :, :]
+        g_channel = pred_np[1, :, :]
+        b_channel = pred_np[2, :, :]
         
-        return heuristic # Trả về mảng numpy 128x128
+        heuristic_128 = np.clip(g_channel - np.maximum(r_channel, b_channel), 0, 1)
+        heatmap_128 = (heuristic_128 * 255).astype(np.uint8)
+        heatmap_full = cv2.resize(heatmap_128, (w, h), interpolation=cv2.INTER_LINEAR)
+        flat_map = (heatmap_full.astype(np.float64) / 255.0).flatten()
+        
+        return flat_map
