@@ -83,7 +83,7 @@ class Visualizer:
                 
                 print(f">>> [Main] Initializing {self.model_type} directly on {self.device} for RRT*...")
                 if self.model_type == "GAN":
-                    checkpoint_path = "checkpoints/GAN_checkpoint/D3-RRTstar/netG_epoch_40.pth"
+                    checkpoint_path = "checkpoints/GAN_checkpoint/D3-RRTstar/netG_epoch_40.pth"#
                     self.ai_model = GANInference(checkpoint_path, device=self.device)
                 elif self.model_type == "SFD":
                     checkpoint_path = "checkpoints/SFD_checkpoints/D3 - RRTstar"
@@ -583,7 +583,7 @@ class Visualizer:
                                     while curr.parent is not None and curr.parent != self.planner.v_bot:
                                         curr = curr.parent
                                     
-                                    self.planner.v_bot = curr
+                                    self.planner.v_bot = self.planner.update_robot()
                                     
                                     curr.parent = None  
                                     curr.lmc = 0.0      
@@ -596,16 +596,6 @@ class Visualizer:
 
             self.screen.fill(COLOR_BG)
 
-            for py_obs in self.py_obstacles:
-                if not py_obs.get('active', True): continue
-                if py_obs['shape'] == 'rectangle':
-                    verts = self.get_rect_vertices(py_obs['x'], py_obs['y'], py_obs['w'], py_obs['h'], py_obs['angle'])
-                    pygame.draw.polygon(self.screen, COLOR_OBSTACLE, verts)
-                    pygame.draw.lines(self.screen, COLOR_OBSTACLE_BORDER, True, verts, 2)
-                elif py_obs['shape'] == 'circle':
-                    cx, cy, r = int(py_obs['x']), int(py_obs['y']), int(py_obs['r'])
-                    pygame.draw.circle(self.screen, COLOR_OBSTACLE, (cx, cy), r)
-                    pygame.draw.circle(self.screen, COLOR_OBSTACLE_BORDER, (cx, cy), r, 2)
 
             if self.current_state == STATE_TEST_MODEL and self.heuristic_debug_surface:
                 self.screen.blit(self.heuristic_debug_surface, (0, 0))
@@ -644,6 +634,17 @@ class Visualizer:
                     
                     if len(path) > 1: pygame.draw.lines(self.screen, COLOR_PATH, False, path, 3)
 
+            for py_obs in self.py_obstacles:
+                if not py_obs.get('active', True): continue
+                if py_obs['shape'] == 'rectangle':
+                    verts = self.get_rect_vertices(py_obs['x'], py_obs['y'], py_obs['w'], py_obs['h'], py_obs['angle'])
+                    pygame.draw.polygon(self.screen, COLOR_OBSTACLE, verts)
+                    pygame.draw.lines(self.screen, COLOR_OBSTACLE_BORDER, True, verts, 2)
+                elif py_obs['shape'] == 'circle':
+                    cx, cy, r = int(py_obs['x']), int(py_obs['y']), int(py_obs['r'])
+                    pygame.draw.circle(self.screen, COLOR_OBSTACLE, (cx, cy), r)
+                    pygame.draw.circle(self.screen, COLOR_OBSTACLE_BORDER, (cx, cy), r, 2)
+
             self.draw_ui_overlay(is_model_ready if self.current_state == STATE_RUNNING else True)
             pygame.display.flip()
             self.clock.tick(60)
@@ -681,7 +682,7 @@ if __name__ == "__main__":
     parser.add_argument("--map", type=str, default="Maps\proximity_static_maps\map_040.json", help="Đường dẫn file map (vd: annotations1.json) hoặc 'all' để chạy tất cả")
     args = parser.parse_args()
 
-    groundtruth_type = "D3 - RRT*"
+    groundtruth_type = "D3 - RRT*"#
     viz = None
     try:
         viz = Visualizer(model_type=args.model, algo_type=args.algo, map_mode=args.map, groundtruth_type=groundtruth_type)
