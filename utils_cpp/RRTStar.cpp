@@ -505,7 +505,7 @@ void RRTStar::updateObstacles(double r, const std::vector<Obstacle *> &newObstac
         }
         model->obstacles = this->Obstacles;
 
-        propagateDescendants();
+        // propagateDescendants();
         verifyQueue(v_bot);
         reduceInconsistency(r);
     }
@@ -743,15 +743,16 @@ bool RRTStar::isPathBroken()
 {
     if (d(v_bot, v_goal) <= config::GOAL_RADIUS)
         return false;
+
     Node *current = v_goal;
     for (int i = 0; i < this->V.size(); i++)
     {
-        if (current == nullptr || current == v_bot)
+        if (current == nullptr || current == v_bot || current->parent == nullptr)
             break;
-        if (current->parent == nullptr || current->lmc >= std::numeric_limits<double>::infinity() || current->lmc == 0.0) // thêm vì cây bị phá trong khi chưa update mà hàm này dùng ở root thay vì ở v_bot
-        {
-            return true;
-        }
+        // if (current->parent == nullptr || current->lmc >= std::numeric_limits<double>::infinity())
+        // {
+        //     return true;
+        // }
         if (this->isCollision(current, current->parent))
         {
             return true;

@@ -86,7 +86,7 @@ class Visualizer:
                     checkpoint_path = "checkpoints/GAN_checkpoint/D3-RRTstar/netG_epoch_40.pth"
                     self.ai_model = GANInference(checkpoint_path, device=self.device)
                 elif self.model_type == "SFD":
-                    checkpoint_path = "checkpoints/SFD_checkpoints/D1 - RRT"
+                    checkpoint_path = "checkpoints/SFD_checkpoints/D3 - RRTstar"
                     self.ai_model = SFDInference(checkpoint_path, device=self.device)
             
             elif self.algo_type == "rrtx":
@@ -574,7 +574,21 @@ class Visualizer:
                         #di chuyển        
                         if should_move_robot and not reached_goal:
                             old_pos = (self.planner.v_bot.pos[0], self.planner.v_bot.pos[1])
-                            self.planner.v_bot = self.planner.update_robot()
+                            if dist_to_goal <= Config.GOAL_RADIUS:
+                                self.planner.v_bot = self.planner.update_robot()
+                                self.goal_node.parent = None
+                            else:
+                                curr = self.goal_node
+                                if curr.parent is not None: 
+                                    while curr.parent is not None and curr.parent != self.planner.v_bot:
+                                        curr = curr.parent
+                                    
+                                    self.planner.v_bot = curr
+                                    
+                                    curr.parent = None  
+                                    curr.lmc = 0.0      
+                                    curr.g = 0.0        
+                            
 
                             new_pos = (self.planner.v_bot.pos[0], self.planner.v_bot.pos[1])
                             step_dist = math.hypot(new_pos[0] - old_pos[0], new_pos[1] - old_pos[1])
@@ -664,10 +678,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Path Planning Visualization")
     parser.add_argument("--model", type=str, choices=["gan", "sfd", "none"], default="none", help="Mô hình dùng để sinh Heuristic (gan, sfd, none)")
     parser.add_argument("--algo", type=str, choices=["rrtx", "rrtstar"], default="rrtx", help="Thuật toán chạy (rrtx hoặc rrtstar)")
-    parser.add_argument("--map", type=str, default="Maps\dynamic_static_maps\map_040.json", help="Đường dẫn file map (vd: annotations1.json) hoặc 'all' để chạy tất cả")
+    parser.add_argument("--map", type=str, default="Maps\proximity_static_maps\map_040.json", help="Đường dẫn file map (vd: annotations1.json) hoặc 'all' để chạy tất cả")
     args = parser.parse_args()
 
-    groundtruth_type = "D1 - RRT"
+    groundtruth_type = "D3 - RRT*"
     viz = None
     try:
         viz = Visualizer(model_type=args.model, algo_type=args.algo, map_mode=args.map, groundtruth_type=groundtruth_type)
